@@ -182,7 +182,9 @@ const state = {
   jobs: new Map(),
   eventSources: new Map(),
   cookiesStatus: null,
-  downloadsPolling: null
+  downloadsPolling: null,
+  isInspecting: false,
+  isStartingDownload: false
 };
 
 const elements = {
@@ -345,6 +347,12 @@ function getSelectedMode() {
 
 function updateAudioQualityVisibility() {
   elements.audioQuality.hidden = getSelectedMode() !== "audio";
+}
+
+function syncRequestButtons() {
+  const busy = state.isInspecting || state.isStartingDownload;
+  elements.inspectButton.disabled = busy;
+  elements.downloadButton.disabled = busy;
 }
 
 async function requestJson(url, options = {}) {
@@ -880,9 +888,15 @@ async function loadCookieStatus() {
   }
 }
 
-async function inspectUrl() {
+async function inspectUrl(options = {}) {
+  if (state.isInspecting || (state.isStartingDownload && !options.allowWhileStarting)) {
+    return;
+  }
+
   clearMessage();
   renderMetadata(null);
+  state.isInspecting = true;
+  syncRequestButtons();
 
   try {
     showMessage(t("metadataLoading"));
@@ -897,20 +911,29 @@ async function inspectUrl() {
     showMessage(t("metadataLoaded"));
   } catch (error) {
     showMessage(error.message, true);
+  } finally {
+    state.isInspecting = false;
+    syncRequestButtons();
   }
 }
 
 async function startDownload() {
-  clearMessage();
-
-  if (!state.metadata) {
-    await inspectUrl();
-    if (!state.metadata) {
-      return;
-    }
+  if (state.isStartingDownload || state.isInspecting) {
+    return;
   }
 
+  clearMessage();
+  state.isStartingDownload = true;
+  syncRequestButtons();
+
   try {
+    if (!state.metadata) {
+      await inspectUrl({ allowWhileStarting: true });
+      if (!state.metadata) {
+        return;
+      }
+    }
+
     const job = await requestJson("/api/downloads", {
       method: "POST",
       body: JSON.stringify({
@@ -924,6 +947,9 @@ async function startDownload() {
     showMessage(t("downloadQueued"));
   } catch (error) {
     showMessage(error.message, true);
+  } finally {
+    state.isStartingDownload = false;
+    syncRequestButtons();
   }
 }
 
@@ -1043,6 +1069,7 @@ elements.deleteCookiesButton.addEventListener("click", async () => {
 applyTheme(state.theme);
 applyStaticTranslations();
 updateAudioQualityVisibility();
+syncRequestButtons();
 renderDownloads();
 
 loadDownloads().catch((error) => {

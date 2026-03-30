@@ -42,7 +42,7 @@ router.get('/downloads/:filename', async (req, res) => {
 
   if (ownerJob.objectKey && isR2Configured) {
     try {
-      const signedUrl = await getDownloadUrl(ownerJob);
+      const signedUrl = await getDownloadUrl(ownerJob.objectKey, ownerJob.filename);
       if (!signedUrl) {
         return res.status(404).send('Download not found');
       }

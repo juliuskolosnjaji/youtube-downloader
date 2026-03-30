@@ -185,11 +185,14 @@ async function processQueue() {
         return;
       }
 
+      const previousPercent = typeof job.progress?.percent === 'number' ? job.progress.percent : 0;
+      const nextPercent = typeof progress.percent === 'number' ? progress.percent : previousPercent;
+
       job.progress = {
-        percent: progress.percent,
-        total: progress.total,
-        speed: progress.speed,
-        eta: progress.eta
+        percent: job.scope === 'video' ? Math.max(previousPercent, nextPercent) : nextPercent,
+        total: progress.total ?? job.progress?.total ?? null,
+        speed: progress.speed ?? null,
+        eta: progress.eta ?? null
       };
       await persistAndBroadcast(job);
     });
