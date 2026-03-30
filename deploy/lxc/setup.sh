@@ -1,12 +1,8 @@
 #!/bin/bash
-# YouTube Downloader — LXC container setup script
-# Run this inside a Debian 12 / Ubuntu 24.04 LXC container as root.
+# YouTube Downloader — container setup script
+# Runs INSIDE the LXC container. Called by deploy.sh, or standalone:
 #
-# Usage:
 #   bash <(curl -fsSL https://raw.githubusercontent.com/juliuskolosnjaji/youtube-downloader/main/deploy/lxc/setup.sh)
-#
-# Or on Proxmox:
-#   pct exec <CTID> -- bash <(curl -fsSL https://raw.githubusercontent.com/juliuskolosnjaji/youtube-downloader/main/deploy/lxc/setup.sh)
 
 set -euo pipefail
 
@@ -56,9 +52,9 @@ if ! id "$APP_USER" &>/dev/null; then
     useradd --system --shell /usr/sbin/nologin --home-dir "$APP_DIR" "$APP_USER"
 fi
 
-# ── 5. Clone from GitHub ──────────────────────────────────────────────────────
+# ── 5. Clone or update from GitHub ───────────────────────────────────────────
 if [[ -d "$APP_DIR/.git" ]]; then
-    info "Repository already exists, pulling latest from GitHub..."
+    info "Repository already exists, pulling latest..."
     git -C "$APP_DIR" fetch --quiet origin "$GITHUB_BRANCH"
     git -C "$APP_DIR" reset --hard "origin/$GITHUB_BRANCH" --quiet
 else
@@ -67,19 +63,18 @@ else
         "https://github.com/$GITHUB_REPO.git" "$APP_DIR"
 fi
 
-# Preserve .env and data/secrets across deploys
 mkdir -p "$APP_DIR/data/downloads" "$APP_DIR/data/tmp" "$APP_DIR/secrets/sessions"
 touch "$APP_DIR/data/downloads/.gitkeep" "$APP_DIR/data/tmp/.gitkeep"
 [[ -f "$APP_DIR/data/jobs.json" ]] || echo "[]" > "$APP_DIR/data/jobs.json"
 
 chown -R "$APP_USER:$APP_USER" "$APP_DIR"
 
-# ── 6. Install npm dependencies ───────────────────────────────────────────────
+# ── 6. npm dependencies ───────────────────────────────────────────────────────
 info "Installing npm dependencies..."
 cd "$APP_DIR"
 sudo -u "$APP_USER" npm install --omit=dev --silent
 
-# ── 7. .env file ─────────────────────────────────────────────────────────────
+# ── 7. .env ───────────────────────────────────────────────────────────────────
 if [[ ! -f "$APP_DIR/.env" ]]; then
     info "Creating .env from .env.example..."
     cp "$APP_DIR/.env.example" "$APP_DIR/.env"
@@ -88,8 +83,7 @@ if [[ ! -f "$APP_DIR/.env" ]]; then
     warning "Edit $APP_DIR/.env before starting the service."
 fi
 
-# ── 8. Install update script ──────────────────────────────────────────────────
-info "Installing update script..."
+# ── 8. Update script ──────────────────────────────────────────────────────────
 cp "$APP_DIR/deploy/lxc/update.sh" /usr/local/bin/ytdl-update
 chmod +x /usr/local/bin/ytdl-update
 
@@ -102,10 +96,8 @@ systemctl enable "$SERVICE_NAME"
 echo ""
 echo -e "${GREEN}✓ Setup complete.${NC}"
 echo ""
-echo "  Next steps:"
-echo "    1. Edit the config:   nano $APP_DIR/.env"
-echo "    2. Start the service: systemctl start $SERVICE_NAME"
-echo "    3. Check status:      systemctl status $SERVICE_NAME"
-echo "    4. View logs:         journalctl -u $SERVICE_NAME -f"
-echo "    5. Update later:      ytdl-update"
+echo "  Edit config:  nano $APP_DIR/.env"
+echo "  Start:        systemctl start $SERVICE_NAME"
+echo "  Logs:         journalctl -u $SERVICE_NAME -f"
+echo "  Update:       ytdl-update"
 echo ""
