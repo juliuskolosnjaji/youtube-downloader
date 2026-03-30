@@ -72,7 +72,7 @@ chown -R "$APP_USER:$APP_USER" "$APP_DIR"
 # ── 6. npm dependencies ───────────────────────────────────────────────────────
 info "Installing npm dependencies..."
 cd "$APP_DIR"
-su - "$APP_USER" -c "npm install --omit=dev --silent"
+cd "$APP_DIR" && su -s /bin/bash "$APP_USER" -c "npm install --omit=dev --silent"
 
 # ── 7. .env ───────────────────────────────────────────────────────────────────
 if [[ ! -f "$APP_DIR/.env" ]]; then
