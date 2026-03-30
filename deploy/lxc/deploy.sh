@@ -194,7 +194,7 @@ else
 
     # Run setup inside the container
     info "Running setup inside CT $CT_ID..."
-    pct exec "$CT_ID" -- bash <(curl -fsSL "$GITHUB_RAW/setup.sh")
+    pct exec "$CT_ID" -- bash -c "curl -fsSL $GITHUB_RAW/setup.sh | bash"
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -268,10 +268,10 @@ case "$CF_CHOICE" in
         echo ""
         read -rp "  Paste your tunnel token: " CF_TOKEN
         [[ -z "$CF_TOKEN" ]] && warning "No token entered, skipping Cloudflare setup." || \
-            pct exec "$CT_ID" -- bash <(curl -fsSL "$GITHUB_RAW/cloudflare.sh") install "$CF_TOKEN"
+            pct exec "$CT_ID" -- bash -c "curl -fsSL $GITHUB_RAW/cloudflare.sh | bash -s install" "$CF_TOKEN"
         ;;
     3)
-        pct exec "$CT_ID" -- bash <(curl -fsSL "$GITHUB_RAW/cloudflare.sh") remove
+        pct exec "$CT_ID" -- bash -c "curl -fsSL $GITHUB_RAW/cloudflare.sh | bash -s remove"
         ;;
     *)
         info "Skipping Cloudflare Tunnel."
