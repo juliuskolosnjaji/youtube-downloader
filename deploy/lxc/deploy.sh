@@ -184,6 +184,11 @@ else
     info "Waiting for container to boot..."
     sleep 5
 
+    # Install curl in container first (needed to download setup.sh)
+    info "Installing curl in container..."
+    pct exec "$CT_ID" -- apt-get update -qq
+    pct exec "$CT_ID" -- apt-get install -y -qq curl
+
     # Wait for network
     for i in {1..20}; do
         if lxc-attach -n "$CT_ID" -- curl -fsSL --max-time 3 https://github.com &>/dev/null; then

@@ -424,6 +424,12 @@ PCT_ARGS=(
 pct create "${PCT_ARGS[@]}" > /dev/null 2>&1
 msg_ok "Container CT${CT_ID} created"
 
+# ── Install curl in container first ─────────────────────────────────────────
+msg_info "Installing curl in container"
+pct exec "$CT_ID" -- apt-get update -qq
+pct exec "$CT_ID" -- apt-get install -y -qq curl
+msg_ok "curl installed"
+
 # ── Wait for network ──────────────────────────────────────────────────────────
 msg_info "Waiting for network"
 for i in {1..30}; do
