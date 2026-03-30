@@ -264,12 +264,12 @@ _manage_cloudflare() {
       fi
 
       msg_info "Installing Cloudflare Tunnel"
-      pct exec "$ct" -- bash <(curl -fsSL "$GITHUB_RAW/cloudflare.sh") install "$CF_TOKEN"
+      pct exec "$ct" -- bash -c "curl -fsSL $GITHUB_RAW/cloudflare.sh -o /tmp/cloudflare.sh && bash /tmp/cloudflare.sh install" "$CF_TOKEN"
       msg_ok "Cloudflare Tunnel installed"
       ;;
     3)
       msg_info "Removing Cloudflare Tunnel"
-      pct exec "$ct" -- bash <(curl -fsSL "$GITHUB_RAW/cloudflare.sh") remove
+      pct exec "$ct" -- bash -c "curl -fsSL $GITHUB_RAW/cloudflare.sh -o /tmp/cloudflare.sh && bash /tmp/cloudflare.sh remove"
       msg_ok "Cloudflare Tunnel removed"
       ;;
     *)
