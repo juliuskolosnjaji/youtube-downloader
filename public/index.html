@@ -1,913 +1,266 @@
 <!DOCTYPE html>
-<html lang="en" x-cloak>
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Kepr</title>
     <meta name="robots" content="noindex, nofollow" />
-
-    <!-- Prevent Alpine FOUC -->
-    <style>[x-cloak]{display:none!important}</style>
-
-    <!-- Inline theme init before any paint -->
     <script>
       (function () {
         try {
-          var t = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-          document.documentElement.setAttribute("data-theme", t);
-          if (t === "dark") document.documentElement.classList.add("dark");
-        } catch (e) {
+          var theme = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+          document.documentElement.setAttribute("data-theme", theme);
+          document.documentElement.classList.add(theme === "dark" ? "theme-dark" : "theme-light");
+        } catch (error) {
           document.documentElement.setAttribute("data-theme", "light");
+          document.documentElement.classList.add("theme-light");
         }
       })();
     </script>
-
-    <!-- Tailwind CDN -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-      tailwind.config = {
-        darkMode: 'class',
-        theme: {
-          extend: {
-            colors: {
-              bg:        'var(--bg)',
-              bg2:       'var(--bg2)',
-              surface:   'var(--surface)',
-              surface2:  'var(--surface2)',
-              border:    'var(--border)',
-              'border-strong': 'var(--border-strong)',
-              accent:    'var(--accent)',
-              'accent-contrast': 'var(--accent-contrast)',
-              green:     'var(--green)',
-              lime:      'var(--lime)',
-              red:       'var(--red)',
-              textc:     'var(--text)',
-              'text-mid':'var(--text-mid)',
-              'text-muted':'var(--text-muted)'
-            },
-            fontFamily: {
-              heading: ['"Avenir Next"', '"Segoe UI"', '"Helvetica Neue"', 'Arial', 'sans-serif'],
-              body:    ['"SFMono-Regular"', '"SF Mono"', '"JetBrains Mono"', '"Menlo"', '"Monaco"', '"Consolas"', 'monospace']
-            },
-            borderRadius: {
-              DEFAULT: '12px',
-              sm: '8px'
-            }
-          }
-        }
-      }
-    </script>
-
-    <style>
-      /* ── CSS Variables ── */
-      :root {
-        --bg: #f0ede8;
-        --bg2: #e8e4de;
-        --surface: #faf9f7;
-        --surface2: #f0ede8;
-        --border: #ddd9d3;
-        --border-strong: #c8c3bc;
-        --accent: #1a1a1a;
-        --accent-contrast: #f5f3ee;
-        --green: #2d6a4f;
-        --lime: #8bc34a;
-        --lime-dim: rgba(139,195,74,0.15);
-        --red: #c0392b;
-        --red-dim: rgba(192,57,43,0.1);
-        --text: #1a1a1a;
-        --text-mid: #555550;
-        --text-muted: #999993;
-        --sidebar-w: 286px;
-      }
-
-      html.dark, html[data-theme="dark"] {
-        --bg: #111113;
-        --bg2: #0d0d0f;
-        --surface: #19191d;
-        --surface2: #111113;
-        --border: #27272d;
-        --border-strong: #38383f;
-        --accent: #e8e8e0;
-        --accent-contrast: #111113;
-        --green: #4ade80;
-        --lime: #4ade80;
-        --lime-dim: rgba(74,222,128,0.12);
-        --red: #f87171;
-        --red-dim: rgba(248,113,113,0.1);
-        --text: #e8e8e0;
-        --text-mid: #9999a0;
-        --text-muted: #55555e;
-      }
-
-      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-      html { background: var(--bg); }
-      html.dark { color-scheme: dark; }
-
-      body {
-        background: var(--bg);
-        color: var(--text);
-        font-family: "SFMono-Regular", "SF Mono", "JetBrains Mono", "Menlo", "Monaco", "Consolas", monospace;
-        font-size: 13px;
-        line-height: 1.5;
-        min-height: 100vh;
-      }
-
-      button, input, select { font: inherit; }
-      a { color: inherit; }
-
-      /* ── Layout ── */
-      .app-shell {
-        min-height: 100vh;
-        display: grid;
-        grid-template-columns: var(--sidebar-w) minmax(0,1fr);
-      }
-
-      .sidebar {
-        background: var(--surface);
-        border-right: 1px solid var(--border);
-        display: flex;
-        flex-direction: column;
-        padding: 28px 20px;
-        position: sticky;
-        top: 0;
-        height: 100vh;
-        overflow-y: auto;
-        gap: 24px;
-        animation: fadeIn 0.4s ease both;
-      }
-
-      .main {
-        min-width: 0;
-        padding: 32px 40px 60px;
-        display: flex;
-        flex-direction: column;
-        gap: 20px;
-      }
-
-      /* ── Typography ── */
-      .eyebrow, .sec-title, .sec-label, .field-label {
-        font-size: 9px;
-        letter-spacing: 0.16em;
-        text-transform: uppercase;
-        color: var(--text-muted);
-      }
-
-      .brand-name {
-        font-family: "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
-        font-size: 26px;
-        font-weight: 800;
-        color: var(--text);
-        letter-spacing: -0.03em;
-        line-height: 1;
-      }
-
-      .page-title {
-        font-family: "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
-        font-size: 20px;
-        font-weight: 700;
-        color: var(--text);
-        letter-spacing: -0.02em;
-      }
-
-      .page-subtitle {
-        font-size: 11px;
-        color: var(--text-muted);
-        margin-top: 2px;
-      }
-
-      /* ── Controls ── */
-      .locale-switch, .theme-switch {
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-        padding: 3px;
-        border: 1px solid var(--border);
-        border-radius: 100px;
-        background: var(--bg);
-      }
-
-      .locale-btn, .theme-btn {
-        border: 0;
-        background: transparent;
-        min-width: 44px;
-        padding: 6px 8px;
-        border-radius: 100px;
-        color: var(--text-muted);
-        cursor: pointer;
-        transition: background 0.12s ease, color 0.12s ease;
-        font-size: 11px;
-      }
-
-      .locale-btn:hover, .theme-btn:hover { color: var(--text); background: var(--surface); }
-
-      .locale-btn.active, .theme-btn.active {
-        background: var(--surface);
-        color: var(--text);
-        box-shadow: 0 1px 3px rgba(0,0,0,0.4);
-      }
-
-      /* ── Divider ── */
-      .divider { height: 1px; background: var(--border); }
-
-      /* ── Pill ── */
-      .pill {
-        display: inline-flex;
-        align-items: center;
-        gap: 5px;
-        padding: 2px 8px;
-        border-radius: 100px;
-        font-size: 10px;
-        font-weight: 500;
-      }
-
-      .pill-active   { background: var(--lime-dim); color: var(--green); border: 1px solid rgba(139,195,74,0.35); }
-      .pill-inactive { background: var(--red-dim); color: var(--red); border: 1px solid rgba(192,57,43,0.25); }
-      .pill-fallback { background: rgba(232,232,224,0.08); color: var(--text); border: 1px solid var(--border-strong); }
-
-      .pill-dot {
-        width: 5px; height: 5px;
-        border-radius: 50%;
-        background: currentColor;
-        animation: pulse 2s ease infinite;
-      }
-
-      /* ── Stats ── */
-      .stat-val {
-        font-family: "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
-        font-size: 18px;
-        font-weight: 700;
-        color: var(--text);
-        letter-spacing: -0.02em;
-        line-height: 1;
-      }
-
-      .stat-val sup {
-        font-family: "SFMono-Regular", "SF Mono", monospace;
-        font-size: 10px;
-        font-weight: 400;
-        color: var(--text-muted);
-        letter-spacing: 0;
-      }
-
-      .mini-bar { height: 2px; background: var(--border); border-radius: 100px; overflow: hidden; }
-      .mini-bar-fill { height: 100%; border-radius: 100px; background: var(--accent); transition: width 0.5s ease; }
-      .mini-bar-fill.c-green { background: var(--lime); }
-      .mini-bar-fill.c-muted { background: var(--border-strong); }
-
-      .fmt-track { flex: 1; height: 3px; background: var(--border); border-radius: 100px; overflow: hidden; }
-      .fmt-fill { height: 100%; width: 0; border-radius: 100px; background: var(--accent); transition: width 0.5s ease; }
-      .fmt-fill.c-muted { background: var(--border-strong); }
-
-      /* ── Card ── */
-      .card {
-        background: var(--surface);
-        border: 1px solid var(--border);
-        border-radius: 12px;
-        padding: 22px 24px;
-        animation: fadeUp 0.4s ease both;
-      }
-
-      .sec-label {
-        margin-bottom: 16px;
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        font-size: 9px;
-        letter-spacing: 0.16em;
-        text-transform: uppercase;
-        color: var(--text-muted);
-      }
-
-      .sec-label::after {
-        content: "";
-        flex: 1;
-        height: 1px;
-        background: var(--border);
-      }
-
-      /* ── Form ── */
-      .url-input {
-        flex: 1;
-        min-width: 0;
-        background: var(--bg);
-        border: 1px solid var(--border);
-        border-radius: 8px;
-        padding: 10px 14px;
-        font-family: inherit;
-        font-size: 12px;
-        color: var(--text);
-        outline: none;
-        transition: border-color 0.15s ease, box-shadow 0.15s ease;
-      }
-
-      .url-input::placeholder { color: var(--text-muted); }
-      .url-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(232,232,224,0.06); }
-
-      .toggle-group {
-        display: flex;
-        background: var(--bg);
-        border: 1px solid var(--border);
-        border-radius: 8px;
-        padding: 3px;
-        gap: 3px;
-      }
-
-      .toggle-btn { cursor: pointer; }
-      .toggle-btn input { display: none; }
-
-      .toggle-btn span {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        padding: 6px 14px;
-        border-radius: 6px;
-        font-size: 11px;
-        color: var(--text-muted);
-        transition: all 0.12s ease;
-        user-select: none;
-      }
-
-      .toggle-btn.active span,
-      .toggle-btn input:checked + span {
-        background: var(--surface);
-        color: var(--text);
-        box-shadow: 0 1px 3px rgba(0,0,0,0.4);
-      }
-
-      .bitrate-select {
-        background: var(--bg);
-        border: 1px solid var(--border);
-        border-radius: 8px;
-        padding: 7px 28px 7px 12px;
-        font-size: 11px;
-        color: var(--text-mid);
-        outline: none;
-        cursor: pointer;
-        appearance: none;
-        -webkit-appearance: none;
-        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%23999' viewBox='0 0 16 16'%3E%3Cpath d='M7.247 11.14 2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 0 1 .753 1.659l-4.796 5.48a1 1 0 0 1-1.506 0z'/%3E%3C/svg%3E");
-        background-repeat: no-repeat;
-        background-position: right 10px center;
-      }
-
-      /* ── Buttons ── */
-      .btn {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 6px;
-        padding: 8px 16px;
-        border-radius: 8px;
-        font-family: inherit;
-        font-size: 11px;
-        cursor: pointer;
-        border: 1px solid transparent;
-        transition: all 0.12s ease;
-        white-space: nowrap;
-        user-select: none;
-      }
-
-      .btn-primary { background: var(--accent); color: var(--accent-contrast); border-color: var(--accent); }
-      .btn-primary:hover { background: #cfcfc8; box-shadow: 0 4px 12px rgba(0,0,0,0.4); transform: translateY(-1px); }
-      .btn-secondary { background: var(--surface); border-color: var(--border); color: var(--text-mid); }
-      .btn-secondary:hover { border-color: var(--border-strong); color: var(--text); background: var(--bg2); }
-      .btn-danger { background: transparent; border-color: rgba(192,57,43,0.3); color: var(--red); }
-      .btn-danger:hover { background: var(--red-dim); }
-      .btn-sm { padding: 5px 10px; font-size: 10px; }
-      .btn-full { width: 100%; }
-
-      /* ── Inline message ── */
-      .inline-message {
-        margin-top: 14px;
-        padding: 10px 12px;
-        border: 1px solid var(--border);
-        border-radius: 8px;
-        background: var(--bg);
-        color: var(--text-mid);
-        font-size: 12px;
-      }
-
-      .inline-message.is-error { color: var(--red); border-color: rgba(192,57,43,0.2); background: var(--red-dim); }
-
-      /* ── Preview ── */
-      .preview-area {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        margin-top: 14px;
-        padding: 12px 14px;
-        background: var(--bg);
-        border: 1px solid var(--border);
-        border-radius: 8px;
-      }
-
-      .preview-thumb {
-        width: 68px; height: 44px;
-        background: var(--border);
-        border-radius: 6px;
-        flex-shrink: 0;
-        display: flex; align-items: center; justify-content: center;
-        position: relative; overflow: hidden;
-        color: var(--text-muted);
-      }
-
-      .preview-thumb img { width: 100%; height: 100%; object-fit: cover; }
-      .preview-title { font-size: 12px; color: var(--text); }
-      .preview-meta { margin-top: 2px; font-size: 10px; color: var(--text-muted); }
-      .preview-link { font-size: 11px; color: var(--green); text-decoration: none; margin-top: 3px; display: inline-block; }
-      .preview-link:hover { text-decoration: underline; }
-
-      /* ── Downloads ── */
-      .dl-list { display: flex; flex-direction: column; margin-top: 4px; min-height: 120px; }
-
-      .dl-item {
-        padding: 14px 0;
-        border-bottom: 1px solid var(--border);
-        display: flex; flex-direction: column;
-        gap: 9px;
-      }
-
-      .dl-item:last-child { border-bottom: none; padding-bottom: 0; }
-      .dl-item:first-child { padding-top: 18px; }
-
-      .dl-tag {
-        font-size: 9px;
-        letter-spacing: 0.1em;
-        text-transform: uppercase;
-        color: var(--text-muted);
-        margin-bottom: 3px;
-      }
-
-      .dl-title {
-        font-family: "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
-        font-size: 14px;
-        font-weight: 600;
-        color: var(--text);
-        letter-spacing: -0.01em;
-        line-height: 1.25;
-      }
-
-      .badge {
-        flex-shrink: 0;
-        padding: 3px 10px;
-        border-radius: 100px;
-        font-size: 10px;
-        font-weight: 500;
-        margin-top: 2px;
-      }
-
-      .badge-running { background: rgba(232,232,224,0.08); color: var(--text); border: 1px solid var(--border-strong); }
-      .badge-done    { background: var(--lime-dim); color: var(--green); border: 1px solid rgba(139,195,74,0.35); }
-      .badge-error   { background: var(--red-dim); color: var(--red); border: 1px solid rgba(192,57,43,0.25); }
-      .badge-neutral { background: var(--bg); color: var(--text-mid); border: 1px solid var(--border); }
-
-      .prog-track { height: 3px; background: var(--border); border-radius: 100px; overflow: hidden; }
-
-      .prog-fill {
-        width: 0; height: 100%;
-        border-radius: 100px;
-        background: var(--accent);
-        position: relative;
-        transition: width 0.3s ease;
-      }
-
-      .prog-fill.done  { background: var(--lime); }
-      .prog-fill.error { background: var(--red); }
-
-      .prog-fill.running::after {
-        content: "";
-        position: absolute; right: 0; top: 0;
-        width: 28px; height: 100%;
-        background: linear-gradient(to right, transparent, rgba(232,232,224,0.25));
-        animation: shimmer 1.2s ease infinite;
-      }
-
-      .dl-stats {
-        font-size: 11px;
-        color: var(--text-muted);
-      }
-
-      .dl-link { font-size: 11px; color: var(--green); text-decoration: none; }
-      .dl-link:hover { text-decoration: underline; }
-
-      .download-error { color: var(--red); font-size: 11px; }
-
-      .expiry-urgent { color: var(--red); font-size: 10px; }
-
-      .cookie-meta { font-size: 10px; color: var(--text-muted); line-height: 1.6; }
-      .privacy-copy { font-size: 10px; color: var(--text-muted); line-height: 1.7; }
-      .footer-link { color: var(--text-mid); text-decoration: none; border-bottom: 1px solid transparent; transition: border-color 0.15s ease, color 0.15s ease; }
-      .footer-link:hover { color: var(--text); border-color: currentColor; }
-
-      .muted { color: var(--text-muted); font-size: 11px; padding-top: 6px; }
-
-      /* ── Modal ── */
-      .modal-backdrop {
-        position: fixed; inset: 0;
-        background: rgba(26,26,26,0.45);
-        backdrop-filter: blur(2px);
-        z-index: 40;
-      }
-
-      .modal-panel {
-        position: fixed; inset: 0;
-        z-index: 50;
-        display: grid; place-items: center;
-        padding: 24px;
-      }
-
-      .modal-inner {
-        width: min(460px, 100%);
-        background: var(--surface);
-        border: 1px solid var(--border);
-        border-radius: 12px;
-        padding: 22px 24px;
-      }
-
-      .modal-title {
-        font-family: "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
-        font-size: 24px;
-        line-height: 1.05;
-        letter-spacing: -0.02em;
-        margin-top: 8px;
-      }
-
-      /* ── Animations ── */
-      @keyframes fadeUp {
-        from { opacity: 0; transform: translateY(8px); }
-        to   { opacity: 1; transform: translateY(0); }
-      }
-
-      @keyframes fadeIn {
-        from { opacity: 0; }
-        to   { opacity: 1; }
-      }
-
-      @keyframes pulse {
-        0%, 100% { opacity: 1; }
-        50% { opacity: 0.35; }
-      }
-
-      @keyframes shimmer {
-        0%, 100% { opacity: 0.3; }
-        50% { opacity: 1; }
-      }
-
-      /* ── Responsive ── */
-      @media (max-width: 900px) {
-        .app-shell { grid-template-columns: 1fr; }
-        .sidebar {
-          width: 100%; height: auto;
-          position: static;
-          border-right: 0; border-bottom: 1px solid var(--border);
-          padding: 18px 20px; gap: 18px;
-        }
-        .main { padding: 20px; }
-      }
-
-      @media (max-width: 640px) {
-        .main, .sidebar { padding-left: 16px; padding-right: 16px; }
-        .card, .modal-inner { padding: 18px; }
-      }
-    </style>
+    <link rel="stylesheet" href="/styles.css?v=20260329-gdpr1" />
   </head>
+  <body>
+    <div id="cookie-modal" class="modal" hidden>
+      <div class="modal-backdrop"></div>
+      <section class="modal-panel" aria-labelledby="cookie-modal-title">
+        <p class="sb-section-title" data-i18n="modalLabel">Cookie upload</p>
+        <h2 id="cookie-modal-title" class="modal-title" data-i18n="modalTitle">Upload your YouTube cookies first</h2>
+        <p class="modal-copy" data-i18n="modalBody">
+          Some YouTube links only work with a signed-in session. Upload your Netscape cookies file so protected links can be accessed.
+        </p>
 
-  <body x-data="app">
+        <input id="cookie-file" type="file" accept=".txt" hidden />
 
-    <!-- Cookie Modal -->
-    <div x-show="showCookieModal">
-      <div class="modal-backdrop" @click="showCookieModal = false"></div>
-      <div class="modal-panel">
-        <section class="modal-inner" @click.stop>
-          <p class="eyebrow" x-text="t('modalLabel')"></p>
-          <h2 class="modal-title" x-text="t('modalTitle')"></h2>
-          <p class="cookie-meta" style="margin-top:10px;line-height:1.7" x-text="t('modalBody')"></p>
+        <button type="button" id="cookie-file-trigger" class="btn btn-secondary btn-full" data-i18n="cookieChooseFile">
+          Choose cookie file
+        </button>
+        <p id="cookie-file-name" class="cookie-meta modal-file">No file selected</p>
 
-          <input id="cookie-file-input" type="file" accept=".txt" class="hidden" @change="handleCookieFile($event)" />
-
-          <button type="button" class="btn btn-secondary btn-full" style="margin-top:16px" @click="document.getElementById('cookie-file-input').click()" x-text="t('cookieChooseFile')"></button>
-          <p class="cookie-meta" style="margin-top:8px;margin-bottom:12px">
-            <span x-show="!cookieFileName" x-text="t('cookieFileEmpty')"></span>
-            <span x-show="cookieFileName" x-text="cookieFileName"></span>
-          </p>
-
-          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
-            <button type="button" class="btn btn-primary" @click="uploadCookies()" x-text="t('cookieUploadAction')"></button>
-            <button type="button" class="btn btn-secondary" @click="showCookieModal = false" x-text="t('cookieDismissAction')"></button>
-          </div>
-        </section>
-      </div>
+        <div class="modal-actions">
+          <button type="button" id="upload-cookies-button" class="btn btn-primary" data-i18n="cookieUploadAction">Upload cookies</button>
+          <button type="button" id="dismiss-modal-button" class="btn btn-secondary" data-i18n="cookieDismissAction">Continue without cookies</button>
+        </div>
+      </section>
     </div>
 
-    <!-- App Shell -->
     <div class="app-shell">
-
-      <!-- Sidebar -->
       <aside class="sidebar">
-        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
-          <div style="display:flex;flex-direction:column;gap:2px">
-            <span class="eyebrow">local downloader</span>
+        <div class="brand-row">
+          <div class="brand">
+            <span class="brand-eyebrow">local downloader</span>
             <div class="brand-name">kepr</div>
           </div>
-          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px">
+          <div class="top-controls">
             <div class="theme-switch" aria-label="Theme switcher">
-              <button type="button" class="theme-btn" :class="{ active: theme === 'light' }" @click="setTheme('light')">Light</button>
-              <button type="button" class="theme-btn" :class="{ active: theme === 'dark' }" @click="setTheme('dark')">Dark</button>
+              <button type="button" class="theme-btn btn-chip" data-theme="light">Light</button>
+              <button type="button" class="theme-btn btn-chip" data-theme="dark">Dark</button>
             </div>
             <div class="locale-switch" aria-label="Language switcher">
-              <button type="button" class="locale-btn" :class="{ active: locale === 'en' }" @click="setLocale('en')">EN</button>
-              <button type="button" class="locale-btn" :class="{ active: locale === 'de' }" @click="setLocale('de')">DE</button>
+              <button type="button" class="locale-btn" data-locale="en">EN</button>
+              <button type="button" class="locale-btn" data-locale="de">DE</button>
             </div>
           </div>
         </div>
 
         <div class="divider"></div>
 
-        <!-- Cookie status -->
         <section>
-          <div class="eyebrow" style="margin-bottom:10px" x-text="t('sessionLabel')"></div>
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px">
-            <span style="font-size:11px;color:var(--text-mid)" x-text="t('cookieFileLabel')"></span>
-            <span :class="cookiePillClass">
+          <div class="sb-section-title" data-i18n="sessionLabel">Private session</div>
+          <div class="cookie-row">
+            <span class="cookie-label-text" data-i18n="cookieFileLabel">Cookie file</span>
+            <span id="cookie-status-pill" class="pill pill-inactive">
               <span class="pill-dot"></span>
-              <span x-text="cookiePillText"></span>
+              <span id="cookie-pill-text" data-i18n="cookieLoading">Loading...</span>
             </span>
           </div>
-          <div class="cookie-meta" x-text="cookieStatusText"></div>
-          <div style="display:flex;flex-direction:column;gap:6px;margin-top:10px">
-            <button type="button" class="btn btn-secondary btn-full" @click="showCookieModal = true" x-text="t('cookieUploadButton')"></button>
-            <button type="button" class="btn btn-danger btn-full" @click="deleteCookies()" x-text="t('cookieDeleteButton')"></button>
+          <div id="cookie-status" class="cookie-meta">Loading...</div>
+          <div class="cookie-btns">
+            <button type="button" id="open-modal-button" class="btn btn-secondary btn-full" data-i18n="cookieUploadButton">
+              Upload cookies
+            </button>
+            <button type="button" id="delete-cookies-button" class="btn btn-danger btn-full" data-i18n="cookieDeleteButton">
+              Delete cookies
+            </button>
           </div>
         </section>
 
         <div class="divider"></div>
 
-        <!-- Session stats -->
         <section>
-          <div class="eyebrow" style="margin-bottom:12px" x-text="t('statsLabel')"></div>
-          <div style="display:flex;flex-direction:column;gap:12px">
-            <div style="display:flex;flex-direction:column;gap:4px">
-              <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px">
-                <span class="stat-val" x-text="statTotal"></span>
-                <span style="font-size:10px;color:var(--text-muted)" x-text="t('statTotalLabel')"></span>
+          <div class="sb-section-title" data-i18n="statsLabel">Session stats</div>
+          <div class="stats-list">
+            <div class="stat-item-sb">
+              <div class="stat-top-row">
+                <span id="stat-total" class="stat-val">0</span>
+                <span class="stat-desc-sb" data-i18n="statTotalLabel">Total downloads</span>
               </div>
-              <div class="mini-bar"><div class="mini-bar-fill" :style="'width:'+statTotalBarWidth"></div></div>
+              <div class="mini-bar"><div id="stat-total-bar" class="mini-bar-fill"></div></div>
             </div>
 
-            <div style="display:flex;flex-direction:column;gap:4px">
-              <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px">
-                <span class="stat-val"><span x-text="statSizeMiB"></span><sup x-text="t('statUnitMiB')"></sup></span>
-                <span style="font-size:10px;color:var(--text-muted)" x-text="t('statSizeLabel')"></span>
+            <div class="stat-item-sb">
+              <div class="stat-top-row">
+                <span id="stat-size" class="stat-val">0.00<sup>MiB</sup></span>
+                <span class="stat-desc-sb" data-i18n="statSizeLabel">Downloaded</span>
               </div>
-              <div class="mini-bar"><div class="mini-bar-fill c-green" :style="'width:'+statSizeBarWidth"></div></div>
+              <div class="mini-bar"><div id="stat-size-bar" class="mini-bar-fill c-green"></div></div>
             </div>
 
-            <div style="display:flex;flex-direction:column;gap:4px">
-              <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px">
-                <span class="stat-val"><span x-text="statSpeed"></span><sup x-text="t('statUnitKiBs')"></sup></span>
-                <span style="font-size:10px;color:var(--text-muted)" x-text="t('statSpeedLabel')"></span>
+            <div class="stat-item-sb">
+              <div class="stat-top-row">
+                <span id="stat-speed" class="stat-val">0.00<sup>KiB/s</sup></span>
+                <span class="stat-desc-sb" data-i18n="statSpeedLabel">Speed</span>
               </div>
-              <div class="mini-bar"><div class="mini-bar-fill c-muted" :style="'width:'+statSpeedBarWidth"></div></div>
+              <div class="mini-bar"><div id="stat-speed-bar" class="mini-bar-fill c-muted"></div></div>
             </div>
 
-            <div style="display:flex;flex-direction:column;gap:4px">
-              <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px">
-                <span class="stat-val"><span x-text="statEta"></span><sup x-text="t('statUnitEta')"></sup></span>
-                <span style="font-size:10px;color:var(--text-muted)" x-text="t('statEtaLabel')"></span>
+            <div class="stat-item-sb">
+              <div class="stat-top-row">
+                <span id="stat-eta" class="stat-val">--<sup>ETA</sup></span>
+                <span class="stat-desc-sb" data-i18n="statEtaLabel">Remaining</span>
               </div>
-              <div class="mini-bar"><div class="mini-bar-fill c-muted" :style="'width:'+statEtaBarWidth"></div></div>
+              <div class="mini-bar"><div id="stat-eta-bar" class="mini-bar-fill c-muted"></div></div>
             </div>
           </div>
         </section>
 
         <div class="divider"></div>
 
-        <!-- Format mix -->
         <section>
-          <div class="eyebrow" style="margin-bottom:10px" x-text="t('formatMixLabel')"></div>
-          <div style="display:flex;flex-direction:column;gap:8px">
-            <div style="display:flex;align-items:center;gap:8px">
-              <span style="font-size:10px;color:var(--text-muted);width:32px">MP3</span>
-              <div class="fmt-track"><div class="fmt-fill" :style="'width:'+mp3Pct+'%'"></div></div>
-              <span style="width:28px;font-size:10px;color:var(--text-muted);text-align:right" x-text="mp3Pct+'%'"></span>
+          <div class="sb-section-title" data-i18n="formatMixLabel">Format mix</div>
+          <div class="fmt-bars">
+            <div class="fmt-row">
+              <span class="fmt-lbl">MP3</span>
+              <div class="fmt-track"><div id="format-mp3-bar" class="fmt-fill"></div></div>
+              <span id="format-mp3-pct" class="fmt-pct">0%</span>
             </div>
-            <div style="display:flex;align-items:center;gap:8px">
-              <span style="font-size:10px;color:var(--text-muted);width:32px">MP4</span>
-              <div class="fmt-track"><div class="fmt-fill c-muted" :style="'width:'+mp4Pct+'%'"></div></div>
-              <span style="width:28px;font-size:10px;color:var(--text-muted);text-align:right" x-text="mp4Pct+'%'"></span>
+            <div class="fmt-row">
+              <span class="fmt-lbl">MP4</span>
+              <div class="fmt-track"><div id="format-mp4-bar" class="fmt-fill c-muted"></div></div>
+              <span id="format-mp4-pct" class="fmt-pct">0%</span>
             </div>
           </div>
         </section>
 
         <div class="divider"></div>
 
-        <!-- Privacy footer -->
-        <section style="margin-top:auto">
-          <div class="eyebrow" style="margin-bottom:8px" x-text="t('privacyLabel')"></div>
-          <p class="privacy-copy" x-text="t('privacyShortNotice')"></p>
-          <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:10px">
-            <a class="footer-link" href="/privacy.html" target="_blank" rel="noreferrer" x-text="t('privacyPolicyLink')"></a>
-            <a class="footer-link" href="/imprint.html" target="_blank" rel="noreferrer" x-text="t('imprintLink')"></a>
+        <section class="sidebar-footer">
+          <div class="sb-section-title" data-i18n="privacyLabel">Privacy</div>
+          <p class="privacy-copy" data-i18n="privacyShortNotice">
+            Kepr only uses a necessary first-party session cookie for browser separation and stores downloads for 24 hours.
+          </p>
+          <div class="footer-links">
+            <a class="footer-link" href="/privacy.html" target="_blank" rel="noreferrer" data-i18n="privacyPolicyLink">Privacy policy</a>
+            <a class="footer-link" href="/imprint.html" target="_blank" rel="noreferrer" data-i18n="imprintLink">Imprint</a>
           </div>
         </section>
       </aside>
 
-      <!-- Main content -->
       <main class="main">
-        <header>
-          <div class="page-title" x-text="t('pageTitle')"></div>
-          <div class="page-subtitle" x-text="t('pageSubtitle')"></div>
+        <header class="page-header">
+          <div class="page-title" data-i18n="pageTitle">Download locally.</div>
+          <div class="page-subtitle" data-i18n="pageSubtitle">Save YouTube videos and MP3s directly to your session.</div>
         </header>
 
-        <!-- Download form card -->
         <section class="card">
-          <div class="sec-label" x-text="t('downloadLabel')"></div>
+          <div class="sec-label" data-i18n="downloadLabel">Download</div>
 
-          <form @submit.prevent="inspectUrl()">
-            <label class="eyebrow" style="margin-bottom:6px;display:block" x-text="t('videoUrlLabel')"></label>
-            <div style="display:flex;gap:8px;margin-bottom:14px">
+          <form id="probe-form">
+            <label class="field-label" for="url-input" data-i18n="videoUrlLabel">Video URL</label>
+            <div class="url-row">
               <input
+                id="url-input"
                 class="url-input"
+                name="url"
                 type="url"
-                x-model="url"
-                :placeholder="t('videoUrlPlaceholder')"
+                placeholder="https://www.youtube.com/watch?v=..."
+                data-i18n-placeholder="videoUrlPlaceholder"
                 required
               />
-              <button type="submit" class="btn btn-secondary" x-text="t('inspectAction')"></button>
+              <button type="submit" id="inspect-button" class="btn btn-secondary" data-i18n="inspectAction">Inspect URL</button>
             </div>
 
-            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+            <div class="controls-row">
               <div class="toggle-group">
-                <label class="toggle-btn" :class="{ active: mode === 'video' }">
-                  <input type="radio" name="mode" value="video" x-model="mode" />
-                  <span x-text="t('modeVideo')"></span>
+                <label class="toggle-btn active">
+                  <input type="radio" name="mode" value="video" checked />
+                  <span data-i18n="modeVideo">MP4 video</span>
                 </label>
-                <label class="toggle-btn" :class="{ active: mode === 'audio' }">
-                  <input type="radio" name="mode" value="audio" x-model="mode" />
-                  <span x-text="t('modeAudio')"></span>
+                <label class="toggle-btn">
+                  <input type="radio" name="mode" value="audio" />
+                  <span data-i18n="modeAudio">MP3 audio</span>
                 </label>
               </div>
 
-              <select class="bitrate-select" x-model="scope">
-                <option value="auto" x-text="t('scopeAuto')"></option>
-                <option value="video" x-text="t('scopeVideo')"></option>
-                <option value="playlist" x-text="t('scopePlaylist')"></option>
-                <option value="channel" x-text="t('scopeChannel')"></option>
+              <select id="scope-select" name="scope" class="bitrate-select">
+                <option value="auto" data-i18n="scopeAuto">Auto detect</option>
+                <option value="video" data-i18n="scopeVideo">Single video</option>
+                <option value="playlist" data-i18n="scopePlaylist">Entire playlist</option>
+                <option value="channel" data-i18n="scopeChannel">Entire channel</option>
               </select>
 
-              <select class="bitrate-select" x-model="audioQuality" x-show="mode === 'audio'">
+              <select id="audio-quality" name="audioQuality" class="bitrate-select">
                 <option value="128K">128 kbps</option>
-                <option value="192K">192 kbps</option>
+                <option value="192K" selected>192 kbps</option>
                 <option value="256K">256 kbps</option>
                 <option value="320K">320 kbps</option>
               </select>
             </div>
 
-            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-              <button type="button" class="btn btn-primary" @click="startDownload()" x-text="t('downloadAction')"></button>
-              <button type="button" class="btn btn-secondary" @click="resetForm()" x-text="t('resetAction')"></button>
+            <div class="action-row">
+              <button type="button" id="download-button" class="btn btn-primary" data-i18n="downloadAction">Start download</button>
+              <button type="button" id="clear-button" class="btn btn-secondary" data-i18n="resetAction">Reset</button>
             </div>
           </form>
 
-          <!-- Message -->
-          <div
-            x-show="message"
-            class="inline-message"
-            :class="{ 'is-error': messageError }"
-            x-text="message"
-          ></div>
+          <div id="message" class="inline-message" hidden></div>
 
-          <!-- Metadata preview -->
-          <section x-show="metadata" class="preview-area">
+          <section id="metadata-card" class="preview-area" hidden>
             <div class="preview-thumb">
-              <img
-                x-show="metadata && metadata.thumbnail"
-                :src="metadata ? metadata.thumbnail : ''"
-                :alt="metadata ? (metadata.title || '') + ' thumbnail' : ''"
-                style="width:100%;height:100%;object-fit:cover"
-              />
-              <svg
-                x-show="!(metadata && metadata.thumbnail)"
-                width="18" height="18" viewBox="0 0 24 24" fill="none"
-                stroke="currentColor" stroke-width="1.8"
-              >
+              <img id="thumbnail" class="preview-thumb-image" alt="Video thumbnail" />
+              <svg class="preview-thumb-placeholder" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                 <rect x="3" y="5" width="18" height="14" rx="2"></rect>
                 <path d="M10 9.5l5 2.5-5 2.5v-5z"></path>
               </svg>
             </div>
-            <div style="min-width:0;flex:1">
-              <div class="preview-title" x-text="metadata ? (metadata.title || t('unknownTitle')) : ''"></div>
-              <div class="preview-meta" x-text="metadata ? metaLine(metadata) : ''"></div>
-              <a
-                class="preview-link"
-                target="_blank"
-                rel="noreferrer"
-                :href="metadata ? (metadata.webpageUrl || '') : '#'"
-                x-text="t('viewOriginal')"
-              ></a>
+            <div class="preview-info">
+              <div id="video-title" class="preview-title-t"></div>
+              <div id="video-meta" class="cookie-meta preview-meta"></div>
+              <a id="video-link" class="preview-link" target="_blank" rel="noreferrer" data-i18n="viewOriginal">View original</a>
             </div>
           </section>
         </section>
 
-        <!-- Downloads card -->
-        <section class="card" style="animation-delay:0.12s">
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px">
-            <div class="sec-label" style="flex:1;margin-bottom:0" x-text="t('downloadsCurrentLabel')"></div>
-            <button
-              type="button"
-              class="btn btn-secondary btn-sm"
-              @click="loadDownloads().then(()=>showMsg(t('downloadsRefreshed')))"
-              x-text="t('refreshAction')"
-            ></button>
+        <section class="card downloads-card">
+          <div class="dl-header">
+            <div class="sec-label" data-i18n="downloadsCurrentLabel">Downloads - Current session</div>
+            <button type="button" id="refresh-button" class="btn btn-secondary btn-sm" data-i18n="refreshAction">Refresh</button>
           </div>
-
-          <div class="dl-list">
-            <!-- Empty state -->
-            <p x-show="sortedJobs.length === 0" class="muted" x-text="t('emptyDownloads')"></p>
-
-            <!-- Job items -->
-            <template x-for="job in sortedJobs" :key="job.id">
-              <article class="dl-item">
-                <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
-                  <div style="flex:1;min-width:0">
-                    <div class="dl-tag" x-text="jobTag(job)"></div>
-                    <div class="dl-title" x-text="job.title || t('unknownTitle')"></div>
-                  </div>
-                  <span :class="badgeClass(job)" x-text="statusText(job)"></span>
-                </div>
-
-                <!-- Progress bar -->
-                <div class="prog-track">
-                  <div :class="progressClass(job)" :style="'width:'+Math.max(0,Math.min(jobPercent(job),100))+'%'"></div>
-                </div>
-
-                <!-- Stats -->
-                <div class="dl-stats" x-text="progressText(job)"></div>
-
-                <!-- Expiry -->
-                <div
-                  x-show="isFinished(job) && expiryUrgent(job)"
-                  class="expiry-urgent"
-                  x-text="expiryLabel(job)"
-                ></div>
-
-                <!-- Actions -->
-                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-                  <!-- Single file download -->
-                  <template x-if="isFinished(job) && !(job.files && job.files.length > 1) && getDownloadLink(job)">
-                    <a
-                      :href="getDownloadLink(job)"
-                      :download="job.filename || ''"
-                      class="btn btn-secondary btn-sm dl-link"
-                      x-text="t('downloadFile')"
-                    ></a>
-                  </template>
-
-                  <!-- Collection files -->
-                  <template x-if="isFinished(job) && job.files && job.files.length > 1">
-                    <template x-for="file in job.files" :key="file.relativePath || file.name">
-                      <a
-                        :href="fileDownloadUrl(job, file)"
-                        :download="file.name || ''"
-                        class="btn btn-secondary btn-sm dl-link"
-                        x-text="t('downloadFile') + ' · ' + file.name"
-                      ></a>
-                    </template>
-                  </template>
-
-                  <!-- Stop button -->
-                  <button
-                    type="button"
-                    class="btn btn-secondary btn-sm"
-                    x-show="isActive(job)"
-                    @click="cancelDownload(job.id)"
-                    x-text="t('stopAction')"
-                  ></button>
-
-                  <!-- Remove button -->
-                  <button
-                    type="button"
-                    class="btn btn-danger btn-sm"
-                    @click="removeDownload(job.id)"
-                    x-text="t('removeAction')"
-                  ></button>
-                </div>
-
-                <!-- Error -->
-                <p
-                  x-show="job.error"
-                  class="download-error"
-                  x-text="job.error"
-                ></p>
-              </article>
-            </template>
-          </div>
+          <div id="downloads-list" class="dl-list"></div>
         </section>
       </main>
     </div>
 
-    <script src="https://unpkg.com/alpinejs@3.13.3/dist/cdn.min.js"></script>
-    <script src="/app.js"></script>
+    <template id="download-template">
+      <article class="dl-item" data-job-id="">
+        <div class="dl-item-top">
+          <div class="dl-meta">
+            <div class="dl-tag"></div>
+            <div class="dl-title"></div>
+          </div>
+          <span class="badge"></span>
+        </div>
+        <div class="prog-track"><div class="prog-fill"></div></div>
+        <div class="dl-stats"></div>
+        <div class="expiry-slot"></div>
+        <div class="download-actions">
+          <a class="dl-link" hidden data-i18n="downloadFile">Download file</a>
+          <button type="button" class="btn btn-secondary btn-sm stop-btn" data-action="cancel" data-i18n="stopAction">Stop</button>
+          <button type="button" class="btn btn-danger btn-sm remove-btn" data-action="remove" data-i18n="removeAction">Remove</button>
+        </div>
+        <p class="download-error" hidden></p>
+      </article>
+    </template>
+
+    <script src="/app.js?v=20260329-gdpr1" defer></script>
   </body>
 </html>

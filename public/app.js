@@ -171,534 +171,892 @@ const LOCALES = {
   }
 };
 
+const POLL_INTERVAL_MS = 15000;
+const EXPIRY_INTERVAL_MS = 60000;
 const DOWNLOAD_RETENTION_MS = 24 * 60 * 60 * 1000;
 
+const state = {
+  locale: detectLocale(),
+  theme: detectTheme(),
+  metadata: null,
+  jobs: new Map(),
+  eventSources: new Map(),
+  cookiesStatus: null,
+  downloadsPolling: null
+};
+
+const elements = {
+  probeForm: document.querySelector("#probe-form"),
+  urlInput: document.querySelector("#url-input"),
+  clearButton: document.querySelector("#clear-button"),
+  refreshButton: document.querySelector("#refresh-button"),
+  inspectButton: document.querySelector("#inspect-button"),
+  downloadButton: document.querySelector("#download-button"),
+  openModalButton: document.querySelector("#open-modal-button"),
+  metadataCard: document.querySelector("#metadata-card"),
+  message: document.querySelector("#message"),
+  thumbnail: document.querySelector("#thumbnail"),
+  videoTitle: document.querySelector("#video-title"),
+  videoMeta: document.querySelector("#video-meta"),
+  videoLink: document.querySelector("#video-link"),
+  scopeSelect: document.querySelector("#scope-select"),
+  audioQuality: document.querySelector("#audio-quality"),
+  downloadsList: document.querySelector("#downloads-list"),
+  template: document.querySelector("#download-template"),
+  cookieModal: document.querySelector("#cookie-modal"),
+  cookieStatus: document.querySelector("#cookie-status"),
+  cookieStatusPill: document.querySelector("#cookie-status-pill"),
+  cookiePillText: document.querySelector("#cookie-pill-text"),
+  cookieFile: document.querySelector("#cookie-file"),
+  cookieFileName: document.querySelector("#cookie-file-name"),
+  cookieFileTrigger: document.querySelector("#cookie-file-trigger"),
+  uploadCookiesButton: document.querySelector("#upload-cookies-button"),
+  deleteCookiesButton: document.querySelector("#delete-cookies-button"),
+  dismissModalButton: document.querySelector("#dismiss-modal-button"),
+  statTotal: document.querySelector("#stat-total"),
+  statSize: document.querySelector("#stat-size"),
+  statSpeed: document.querySelector("#stat-speed"),
+  statEta: document.querySelector("#stat-eta"),
+  statTotalBar: document.querySelector("#stat-total-bar"),
+  statSizeBar: document.querySelector("#stat-size-bar"),
+  statSpeedBar: document.querySelector("#stat-speed-bar"),
+  statEtaBar: document.querySelector("#stat-eta-bar"),
+  formatMp4Bar: document.querySelector("#format-mp4-bar"),
+  formatMp4Pct: document.querySelector("#format-mp4-pct"),
+  formatMp3Bar: document.querySelector("#format-mp3-bar"),
+  formatMp3Pct: document.querySelector("#format-mp3-pct"),
+  localeButtons: [...document.querySelectorAll(".locale-btn")],
+  themeButtons: [...document.querySelectorAll(".theme-btn")]
+};
+
+function detectLocale() {
+  return navigator.language?.toLowerCase().startsWith("de") ? "de" : "en";
+}
+
+function detectTheme() {
+  const current = document.documentElement.getAttribute("data-theme");
+  if (current === "light" || current === "dark") {
+    return current;
+  }
+  return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+function t(key, vars = {}) {
+  const table = LOCALES[state.locale] || LOCALES.en;
+  const fallback = LOCALES.en[key] || key;
+  const template = table[key] || fallback;
+  return template.replace(/\{(\w+)\}/g, (_, name) => String(vars[name] ?? ""));
+}
+
+function applyStaticTranslations() {
+  document.documentElement.lang = state.locale;
+  document.title = t("appTitle");
+
+  document.querySelectorAll("[data-i18n]").forEach((node) => {
+    node.textContent = t(node.dataset.i18n);
+  });
+
+  document.querySelectorAll("[data-i18n-placeholder]").forEach((node) => {
+    node.setAttribute("placeholder", t(node.dataset.i18nPlaceholder));
+  });
+
+  document.querySelectorAll("option[data-i18n]").forEach((node) => {
+    node.textContent = t(node.dataset.i18n);
+  });
+
+  elements.localeButtons.forEach((button) => {
+    button.dataset.active = button.dataset.locale === state.locale ? "true" : "false";
+  });
+
+  elements.themeButtons.forEach((button) => {
+    button.dataset.active = button.dataset.theme === state.theme ? "true" : "false";
+  });
+
+  if (!elements.cookieFile.files?.length) {
+    elements.cookieFileName.textContent = t("cookieFileEmpty");
+  }
+}
+
+function applyTheme(theme) {
+  const normalizedTheme = theme === "dark" ? "dark" : "light";
+  state.theme = normalizedTheme;
+  document.documentElement.setAttribute("data-theme", normalizedTheme);
+  document.documentElement.classList.toggle("theme-dark", normalizedTheme === "dark");
+  document.documentElement.classList.toggle("theme-light", normalizedTheme === "light");
+  document.body.dataset.theme = normalizedTheme;
+  document.body.classList.toggle("theme-dark", normalizedTheme === "dark");
+  document.body.classList.toggle("theme-light", normalizedTheme === "light");
+  elements.themeButtons.forEach((button) => {
+    button.dataset.active = button.dataset.theme === normalizedTheme ? "true" : "false";
+  });
+}
+
+function setLocale(locale) {
+  if (!LOCALES[locale]) {
+    return;
+  }
+
+  state.locale = locale;
+  applyStaticTranslations();
+  updateAudioQualityVisibility();
+  renderCookieStatus(state.cookiesStatus);
+  renderMetadata(state.metadata);
+  renderDownloads();
+}
+
+function formatDuration(seconds) {
+  if (!seconds && seconds !== 0) {
+    return t("unknownDuration");
+  }
+
+  const total = Number(seconds);
+  if (!Number.isFinite(total)) {
+    return t("unknownDuration");
+  }
+
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const secs = Math.floor(total % 60);
+  return [hours, minutes, secs]
+    .filter((value, index) => value > 0 || index > 0)
+    .map((value) => String(value).padStart(2, "0"))
+    .join(":");
+}
+
+function formatDateTime(value) {
+  return new Date(value).toLocaleString(state.locale);
+}
+
+function showMessage(text, isError = false) {
+  elements.message.hidden = false;
+  elements.message.textContent = text;
+  elements.message.dataset.tone = isError ? "error" : "neutral";
+}
+
+function clearMessage() {
+  elements.message.hidden = true;
+  elements.message.textContent = "";
+  delete elements.message.dataset.tone;
+}
+
+function getSelectedMode() {
+  return document.querySelector('input[name="mode"]:checked')?.value || "video";
+}
+
+function updateAudioQualityVisibility() {
+  elements.audioQuality.hidden = getSelectedMode() !== "audio";
+}
+
+async function requestJson(url, options = {}) {
+  const headers = {
+    "X-App-Locale": state.locale,
+    ...(options.headers || {})
+  };
+
+  if (options.body && !headers["Content-Type"]) {
+    headers["Content-Type"] = "application/json";
+  }
+
+  const response = await fetch(url, {
+    headers,
+    ...options
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload.error || t("requestFailed"));
+  }
+  return payload;
+}
+
+function openCookieModal() {
+  elements.cookieModal.hidden = false;
+}
+
+function closeCookieModal() {
+  elements.cookieModal.hidden = true;
+}
+
+function renderMetadata(metadata) {
+  state.metadata = metadata;
+
+  if (!metadata) {
+    elements.metadataCard.hidden = true;
+    elements.thumbnail.src = "";
+    return;
+  }
+
+  const webpageUrl = metadata.webpageUrl || metadata.originalUrl || metadata.url || elements.urlInput.value.trim();
+
+  elements.metadataCard.hidden = false;
+  elements.thumbnail.src = metadata.thumbnail || "";
+  elements.thumbnail.alt = `${metadata.title || t("unknownTitle")} thumbnail`;
+  elements.videoTitle.textContent = metadata.title || t("unknownTitle");
+  elements.videoMeta.textContent = [
+    metadata.uploader || metadata.artist || t("unknownCreator"),
+    metadata.isCollection
+      ? t("metadataCollectionLoaded", {
+          scope: metadata.scope === "channel" ? t("scopeChannel") : t("scopePlaylist"),
+          count: metadata.entryCount || 0
+        })
+      : formatDuration(metadata.duration),
+    metadata.extractor || null
+  ].filter(Boolean).join(" • ");
+  elements.videoLink.href = webpageUrl;
+  elements.videoLink.textContent = t("viewOriginal");
+}
+
+function renderCookieStatus(status, errorMessage = "") {
+  if (errorMessage) {
+    elements.cookieStatus.textContent = errorMessage;
+    elements.cookiePillText.textContent = t("cookieProblem");
+    elements.cookieStatusPill.className = "pill pill-inactive";
+    return;
+  }
+
+  state.cookiesStatus = status;
+
+  if (!status) {
+    elements.cookieStatus.textContent = t("cookieNoSessionInfo");
+    elements.cookiePillText.textContent = t("cookieLoading");
+    elements.cookieStatusPill.className = "pill pill-inactive";
+    return;
+  }
+
+  if (status.source === "session-file" && status.configured) {
+    elements.cookieStatus.textContent = t("cookiePrivateActive", {
+      time: formatDateTime(status.updatedAt)
+    });
+    elements.cookiePillText.textContent = t("cookiePrivatePill");
+    elements.cookieStatusPill.className = "pill pill-active";
+    closeCookieModal();
+    return;
+  }
+
+  if (status.source === "browser-profile") {
+    elements.cookieStatus.textContent = t("cookieFallbackActive", {
+      browser: status.browserSource || ""
+    });
+    elements.cookiePillText.textContent = t("cookieFallbackPill");
+    elements.cookieStatusPill.className = "pill pill-fallback";
+    closeCookieModal();
+    return;
+  }
+
+  elements.cookieStatus.textContent = t("cookieMissing");
+  elements.cookiePillText.textContent = t("cookieMissingPill");
+  elements.cookieStatusPill.className = "pill pill-inactive";
+}
+
+function normalizeStatus(job) {
+  if (job.status === "done" || job.status === "finished") {
+    return "finished";
+  }
+  if (job.status === "running" || job.status === "downloading") {
+    return "downloading";
+  }
+  if (job.status === "error" || job.status === "failed") {
+    return "failed";
+  }
+  if (job.status === "cancelled") {
+    return "cancelled";
+  }
+  return "queued";
+}
+
+function resolveMode(job) {
+  if (job.mode === "audio" || job.format === "mp3" || job.format === "MP3") {
+    return "audio";
+  }
+  return "video";
+}
+
+function statusText(job) {
+  const status = normalizeStatus(job);
+  if (status === "finished") {
+    return t("statusFinished");
+  }
+  if (status === "cancelled") {
+    return t("statusCancelled");
+  }
+  if (status === "failed") {
+    return t("statusFailed");
+  }
+  if (status === "downloading") {
+    return t("statusDownloading");
+  }
+  return t("statusQueued");
+}
+
+function getJobPercent(job) {
+  if (typeof job.progress === "number") {
+    return Math.max(0, Math.min(job.progress, 100));
+  }
+  if (typeof job.progress?.percent === "number") {
+    return Math.max(0, Math.min(job.progress.percent, 100));
+  }
+  return 0;
+}
+
 function readNumericString(value) {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value !== "string") return null;
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value !== "string") {
+    return null;
+  }
+
   const match = value.replace(",", ".").match(/-?\d+(\.\d+)?/);
-  if (!match) return null;
+  if (!match) {
+    return null;
+  }
   return Number.parseFloat(match[0]);
 }
 
-document.addEventListener("alpine:init", () => {
-  Alpine.data("app", () => ({
-    locale: navigator.language?.toLowerCase().startsWith("de") ? "de" : "en",
-    theme: window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light",
-    url: "",
-    mode: "video",
-    scope: "auto",
-    audioQuality: "192K",
-    metadata: null,
-    jobs: [],
-    cookieStatus: null,
-    showCookieModal: false,
-    message: "",
-    messageError: false,
-    isLoading: false,
-    cookieFileContent: "",
-    cookieFileName: "",
-    _eventSources: null,
-
-    init() {
-      this._eventSources = new Map();
-      this.applyTheme(this.theme);
-      this.loadDownloads().catch(() => {});
-      this.loadCookieStatus().catch(() => {});
-      setInterval(() => {
-        this.loadDownloads().catch(() => {});
-      }, 15000);
-    },
-
-    t(key, vars = {}) {
-      const table = LOCALES[this.locale] || LOCALES.en;
-      const fallback = LOCALES.en[key] || key;
-      const template = table[key] || fallback;
-      return template.replace(/\{(\w+)\}/g, (_, name) => String(vars[name] ?? ""));
-    },
-
-    applyTheme(t) {
-      this.theme = t === "dark" ? "dark" : "light";
-      document.documentElement.classList.toggle("dark", this.theme === "dark");
-      document.documentElement.setAttribute("data-theme", this.theme);
-    },
-
-    setTheme(t) {
-      this.applyTheme(t);
-    },
-
-    setLocale(l) {
-      if (LOCALES[l]) this.locale = l;
-    },
-
-    getBaseUrl() {
-      return window.location.origin;
-    },
-
-    async _request(url, options = {}) {
-      const headers = {
-        "X-App-Locale": this.locale,
-        ...(options.headers || {})
-      };
-      if (options.body && !headers["Content-Type"]) {
-        headers["Content-Type"] = "application/json";
-      }
-      const res = await fetch(url, { ...options, headers });
-      const payload = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(payload.error || this.t("requestFailed"));
-      return payload;
-    },
-
-    showMsg(text, isError = false) {
-      this.message = text;
-      this.messageError = isError;
-    },
-
-    clearMsg() {
-      this.message = "";
-      this.messageError = false;
-    },
-
-    // Cookie management
-    async loadCookieStatus() {
-      try {
-        this.cookieStatus = await this._request("/api/cookies");
-      } catch (err) {
-        this.cookieStatus = null;
-      }
-    },
-
-    handleCookieFile(e) {
-      const file = e.target.files?.[0];
-      if (file) {
-        this.cookieFileName = file.name;
-        const reader = new FileReader();
-        reader.onload = (ev) => { this.cookieFileContent = ev.target.result; };
-        reader.readAsText(file);
-      } else {
-        this.cookieFileName = "";
-        this.cookieFileContent = "";
-      }
-    },
-
-    async uploadCookies() {
-      if (!this.cookieFileContent) {
-        this.showMsg(this.t("cookieSelectFirst"), true);
-        return;
-      }
-      try {
-        await this._request("/api/cookies", {
-          method: "PUT",
-          body: JSON.stringify({ content: this.cookieFileContent })
-        });
-        await this.loadCookieStatus();
-        this.showMsg(this.t("cookieSaved"));
-        this.cookieFileContent = "";
-        this.cookieFileName = "";
-        this.showCookieModal = false;
-      } catch (err) {
-        this.showMsg(err.message, true);
-      }
-    },
-
-    async deleteCookies() {
-      try {
-        await this._request("/api/cookies", { method: "DELETE" });
-        await this.loadCookieStatus();
-        this.showMsg(this.t("cookieRemoved"));
-      } catch (err) {
-        this.showMsg(err.message, true);
-      }
-    },
-
-    get cookieStatusText() {
-      const s = this.cookieStatus;
-      if (!s) return this.t("cookieNoSessionInfo");
-      if (s.source === "session-file" && s.configured) {
-        return this.t("cookiePrivateActive", { time: this.formatDateTime(s.updatedAt) });
-      }
-      if (s.source === "browser-profile") {
-        return this.t("cookieFallbackActive", { browser: s.browserSource || "" });
-      }
-      return this.t("cookieMissing");
-    },
-
-    get cookiePillText() {
-      const s = this.cookieStatus;
-      if (!s) return this.t("cookieLoading");
-      if (s.source === "session-file" && s.configured) return this.t("cookiePrivatePill");
-      if (s.source === "browser-profile") return this.t("cookieFallbackPill");
-      return this.t("cookieMissingPill");
-    },
-
-    get cookiePillClass() {
-      const s = this.cookieStatus;
-      if (!s) return "pill pill-inactive";
-      if (s.source === "session-file" && s.configured) return "pill pill-active";
-      if (s.source === "browser-profile") return "pill pill-fallback";
-      return "pill pill-inactive";
-    },
-
-    // URL inspection and download
-    async inspectUrl() {
-      this.clearMsg();
-      this.metadata = null;
-      this.isLoading = true;
-      try {
-        this.showMsg(this.t("metadataLoading"));
-        this.metadata = await this._request("/api/probe", {
-          method: "POST",
-          body: JSON.stringify({ url: this.url.trim(), scope: this.scope })
-        });
-        this.showMsg(this.t("metadataLoaded"));
-      } catch (err) {
-        this.showMsg(err.message, true);
-      } finally {
-        this.isLoading = false;
-      }
-    },
-
-    async startDownload() {
-      this.clearMsg();
-      if (!this.metadata) {
-        await this.inspectUrl();
-        if (!this.metadata) return;
-      }
-      this.isLoading = true;
-      try {
-        const job = await this._request("/api/downloads", {
-          method: "POST",
-          body: JSON.stringify({
-            url: this.url.trim(),
-            scope: this.scope,
-            mode: this.mode,
-            audioQuality: this.audioQuality
-          })
-        });
-        this.upsertJob(job);
-        this.showMsg(this.t("downloadQueued"));
-      } catch (err) {
-        this.showMsg(err.message, true);
-      } finally {
-        this.isLoading = false;
-      }
-    },
-
-    resetForm() {
-      this.url = "";
-      this.scope = "auto";
-      this.metadata = null;
-      this.clearMsg();
-    },
-
-    // Downloads list
-    async loadDownloads() {
-      try {
-        const jobs = await this._request("/api/downloads");
-        const nextIds = new Set(jobs.map((j) => j.id));
-
-        // Close stale event sources
-        for (const [id, src] of this._eventSources.entries()) {
-          if (!nextIds.has(id)) {
-            src.close();
-            this._eventSources.delete(id);
-          }
-        }
-
-        this.jobs = jobs;
-        for (const job of jobs) {
-          if (this.isActive(job)) this.subscribeToJob(job.id);
-        }
-      } catch {
-        // silently fail on polling
-      }
-    },
-
-    upsertJob(job) {
-      const idx = this.jobs.findIndex((j) => j.id === job.id);
-      if (idx >= 0) {
-        this.jobs.splice(idx, 1, job);
-      } else {
-        this.jobs.unshift(job);
-      }
-      if (this.isActive(job)) {
-        this.subscribeToJob(job.id);
-      } else if (this._eventSources.has(job.id)) {
-        this._eventSources.get(job.id)?.close();
-        this._eventSources.delete(job.id);
-      }
-    },
-
-    subscribeToJob(id) {
-      if (this._eventSources.has(id)) return;
-      const source = new EventSource(`/api/downloads/${id}/events`);
-
-      source.addEventListener("job", (e) => {
-        const payload = JSON.parse(e.data);
-        const idx = this.jobs.findIndex((j) => j.id === payload.id);
-        if (idx >= 0) {
-          this.jobs.splice(idx, 1, payload);
-        } else {
-          this.jobs.unshift(payload);
-        }
-        if (["finished", "failed", "cancelled"].includes(payload.status)) {
-          source.close();
-          this._eventSources.delete(id);
-        }
-      });
-
-      source.addEventListener("removed", (e) => {
-        const payload = JSON.parse(e.data);
-        this.jobs = this.jobs.filter((j) => j.id !== payload.id);
-        source.close();
-        this._eventSources.delete(id);
-      });
-
-      source.onerror = () => {
-        source.close();
-        this._eventSources.delete(id);
-        setTimeout(() => {
-          const current = this.jobs.find((j) => j.id === id);
-          if (current && this.isActive(current)) {
-            this.subscribeToJob(id);
-          }
-        }, 1500);
-      };
-
-      this._eventSources.set(id, source);
-    },
-
-    async cancelDownload(id) {
-      try {
-        const job = await this._request(`/api/downloads/${id}/cancel`, { method: "POST" });
-        this.upsertJob(job);
-        this.showMsg(this.t("stopMessage"));
-      } catch (err) {
-        this.showMsg(err.message, true);
-      }
-    },
-
-    async removeDownload(id) {
-      try {
-        await this._request(`/api/downloads/${id}`, { method: "DELETE" });
-        this.jobs = this.jobs.filter((j) => j.id !== id);
-        this._eventSources.get(id)?.close();
-        this._eventSources.delete(id);
-        this.showMsg(this.t("removeMessage"));
-      } catch (err) {
-        this.showMsg(err.message, true);
-      }
-    },
-
-    // Computed getters
-    get sortedJobs() {
-      return [...this.jobs].sort((a, b) => {
-        const ta = new Date(b.createdAt || 0).getTime();
-        const tb = new Date(a.createdAt || 0).getTime();
-        return ta - tb;
-      });
-    },
-
-    get statTotal() {
-      return this.jobs.length;
-    },
-
-    get statSizeMiB() {
-      return this.jobs.reduce((sum, j) => sum + this.jobSizeMiB(j), 0).toFixed(2);
-    },
-
-    get statSpeed() {
-      return this.jobs.reduce((sum, j) => sum + this.jobSpeedKiB(j), 0).toFixed(2);
-    },
-
-    get statEta() {
-      return this.jobs.map((j) => this.jobEta(j)).find((e) => e && e !== "--") || "--";
-    },
-
-    get mp3Count() {
-      return this.jobs.filter((j) => this.jobMode(j) === "audio").length;
-    },
-
-    get mp4Count() {
-      return this.jobs.filter((j) => this.jobMode(j) === "video").length;
-    },
-
-    get mp3Pct() {
-      return this.jobs.length ? Math.round((this.mp3Count / this.jobs.length) * 100) : 0;
-    },
-
-    get mp4Pct() {
-      return this.jobs.length ? Math.round((this.mp4Count / this.jobs.length) * 100) : 0;
-    },
-
-    get statTotalBarWidth() {
-      return Math.min(this.jobs.length * 12, 100) + "%";
-    },
-
-    get statSizeBarWidth() {
-      return Math.min(parseFloat(this.statSizeMiB), 100) + "%";
-    },
-
-    get statSpeedBarWidth() {
-      return Math.min(parseFloat(this.statSpeed) / 10, 100) + "%";
-    },
-
-    get statEtaBarWidth() {
-      return (this.statEta && this.statEta !== "--") ? "38%" : "0%";
-    },
-
-    // Per-job helpers
-    jobStatus(job) {
-      if (job.status === "done" || job.status === "finished") return "finished";
-      if (job.status === "running" || job.status === "downloading") return "downloading";
-      if (job.status === "error" || job.status === "failed") return "failed";
-      if (job.status === "cancelled") return "cancelled";
-      return "queued";
-    },
-
-    jobMode(job) {
-      if (job.mode === "audio" || job.format === "mp3" || job.format === "MP3") return "audio";
-      return "video";
-    },
-
-    jobPercent(job) {
-      if (typeof job.progress === "number") return Math.max(0, Math.min(job.progress, 100));
-      if (typeof job.progress?.percent === "number") return Math.max(0, Math.min(job.progress.percent, 100));
-      return 0;
-    },
-
-    jobSizeMiB(job) {
-      return readNumericString(job.sizeMiB) ?? readNumericString(job.size_mib) ?? readNumericString(job.progress?.total) ?? 0;
-    },
-
-    jobSpeedKiB(job) {
-      return readNumericString(job.speedKib) ?? readNumericString(job.speed_kib) ?? readNumericString(job.progress?.speed) ?? 0;
-    },
-
-    jobEta(job) {
-      return job.eta || job.progress?.eta || "--";
-    },
-
-    statusText(job) {
-      const s = this.jobStatus(job);
-      if (s === "finished") return this.t("statusFinished");
-      if (s === "cancelled") return this.t("statusCancelled");
-      if (s === "failed") return this.t("statusFailed");
-      if (s === "downloading") return this.t("statusDownloading");
-      return this.t("statusQueued");
-    },
-
-    progressText(job) {
-      const s = this.jobStatus(job);
-      if (s === "finished") return this.t("progressFinished");
-      if (s === "cancelled") return this.t("progressCancelled");
-      if (s === "failed") return this.t("progressFailed");
-
-      const parts = [];
-      const pct = this.jobPercent(job);
-      if (pct > 0) parts.push(`${pct.toFixed(1)}%`);
-      const size = this.jobSizeMiB(job);
-      if (size > 0) parts.push(`${size.toFixed(2)} MiB`);
-      const speed = this.jobSpeedKiB(job);
-      if (speed > 0) parts.push(`${speed.toFixed(2)} KiB/s`);
-      const eta = this.jobEta(job);
-      if (eta && eta !== "--") parts.push(`ETA ${eta}`);
-      return parts.join(" · ") || this.t("progressWaiting");
-    },
-
-    badgeClass(job) {
-      const s = this.jobStatus(job);
-      if (s === "finished") return "badge badge-done";
-      if (s === "failed") return "badge badge-error";
-      if (s === "cancelled") return "badge badge-neutral";
-      return "badge badge-running";
-    },
-
-    progressClass(job) {
-      const s = this.jobStatus(job);
-      if (s === "finished") return "prog-fill done";
-      if (s === "failed") return "prog-fill error";
-      if (s === "downloading") return "prog-fill running";
-      return "prog-fill";
-    },
-
-    jobTag(job) {
-      const mode = this.jobMode(job);
-      const uploader = job.uploader || this.t("unknownCreator");
-      return `${mode === "audio" ? "MP3 AUDIO" : "MP4 VIDEO"} · ${uploader}`;
-    },
-
-    isActive(job) {
-      const s = this.jobStatus(job);
-      return s === "queued" || s === "downloading";
-    },
-
-    isFinished(job) {
-      return this.jobStatus(job) === "finished";
-    },
-
-    getDownloadLink(job) {
-      if (job.filename) return `/downloads/${encodeURIComponent(job.filename)}`;
-      if (job.downloadUrl) return job.downloadUrl;
-      return "";
-    },
-
-    fileDownloadUrl(job, file) {
-      if (file.downloadUrl) return file.downloadUrl;
-      return `/download-file?job=${encodeURIComponent(job.id)}&file=${encodeURIComponent(file.relativePath || file.name)}`;
-    },
-
-    expiryLabel(job) {
-      const createdAt = job.createdAt;
-      if (!createdAt) return "";
-      const createdMs = new Date(createdAt).getTime();
-      if (!Number.isFinite(createdMs)) return "";
-      const expiresMs = createdMs + DOWNLOAD_RETENTION_MS;
-      const remainingMs = expiresMs - Date.now();
-      if (remainingMs <= 0) return this.t("expiryExpired");
-      if (remainingMs < DOWNLOAD_RETENTION_MS) return this.t("expiryUrgent");
-      return "";
-    },
-
-    expiryUrgent(job) {
-      const createdAt = job.createdAt;
-      if (!createdAt) return false;
-      const createdMs = new Date(createdAt).getTime();
-      if (!Number.isFinite(createdMs)) return false;
-      const expiresMs = createdMs + DOWNLOAD_RETENTION_MS;
-      return (expiresMs - Date.now()) < DOWNLOAD_RETENTION_MS;
-    },
-
-    formatDuration(s) {
-      if (!s && s !== 0) return this.t("unknownDuration");
-      const total = Number(s);
-      if (!Number.isFinite(total)) return this.t("unknownDuration");
-      const hours = Math.floor(total / 3600);
-      const minutes = Math.floor((total % 3600) / 60);
-      const secs = Math.floor(total % 60);
-      return [hours, minutes, secs]
-        .filter((v, i) => v > 0 || i > 0)
-        .map((v) => String(v).padStart(2, "0"))
-        .join(":");
-    },
-
-    formatDateTime(v) {
-      return new Date(v).toLocaleString(this.locale);
-    },
-
-    metaLine(m) {
-      if (!m) return "";
-      const parts = [
-        m.uploader || this.t("unknownCreator"),
-        m.isCollection
-          ? this.t("metadataCollectionLoaded", {
-              scope: m.scope === "channel" ? this.t("scopeChannel") : this.t("scopePlaylist"),
-              count: m.entryCount || 0
-            })
-          : this.formatDuration(m.duration),
-        m.extractor || null
-      ].filter(Boolean);
-      return parts.join(" · ");
+function getJobSizeMiB(job) {
+  return (
+    readNumericString(job.sizeMiB) ??
+    readNumericString(job.size_mib) ??
+    readNumericString(job.progress?.total) ??
+    0
+  );
+}
+
+function getJobSpeedKiB(job) {
+  return (
+    readNumericString(job.speedKib) ??
+    readNumericString(job.speed_kib) ??
+    readNumericString(job.progress?.speed) ??
+    0
+  );
+}
+
+function getJobEta(job) {
+  return job.eta || job.progress?.eta || "--";
+}
+
+function progressText(job) {
+  const status = normalizeStatus(job);
+  if (status === "finished") {
+    return t("progressFinished");
+  }
+  if (status === "cancelled") {
+    return t("progressCancelled");
+  }
+  if (status === "failed") {
+    return t("progressFailed");
+  }
+
+  const parts = [];
+  const percent = getJobPercent(job);
+  if (percent > 0) {
+    parts.push(`${percent.toFixed(1)}%`);
+  }
+
+  const size = getJobSizeMiB(job);
+  if (size > 0) {
+    parts.push(`${size.toFixed(2)} MiB`);
+  }
+
+  const speed = getJobSpeedKiB(job);
+  if (speed > 0) {
+    parts.push(`${speed.toFixed(2)} KiB/s`);
+  }
+
+  const eta = getJobEta(job);
+  if (eta && eta !== "--") {
+    parts.push(`ETA ${eta}`);
+  }
+
+  return parts.join(" • ") || t("progressWaiting");
+}
+
+function toCreatedAtMs(createdAt) {
+  if (typeof createdAt === "number" && Number.isFinite(createdAt)) {
+    return createdAt > 1e12 ? createdAt : createdAt * 1000;
+  }
+
+  if (typeof createdAt === "string" && /^\d+$/.test(createdAt)) {
+    const parsed = Number.parseInt(createdAt, 10);
+    return parsed > 1e12 ? parsed : parsed * 1000;
+  }
+
+  if (createdAt) {
+    const parsed = new Date(createdAt).getTime();
+    if (Number.isFinite(parsed)) {
+      return parsed;
     }
-  }));
+  }
+
+  return null;
+}
+
+function getExpiryLabel(createdAt) {
+  const createdAtMs = toCreatedAtMs(createdAt);
+  if (!createdAtMs) {
+    return "";
+  }
+
+  const expiresAtMs = createdAtMs + DOWNLOAD_RETENTION_MS;
+  const remainingMs = expiresAtMs - Date.now();
+
+  if (remainingMs <= 0) {
+    return `<div class="expiry-label urgent">${t("expiryExpired")}</div>`;
+  }
+
+  if (remainingMs < DOWNLOAD_RETENTION_MS) {
+    return `<div class="expiry-label urgent">${t("expiryUrgent")}</div>`;
+  }
+
+  return "";
+}
+
+function formatStatValue(value, unitKey) {
+  return `${value}<sup>${t(unitKey)}</sup>`;
+}
+
+function renderStats() {
+  const jobs = [...state.jobs.values()];
+  const total = jobs.length;
+  const totalSize = jobs.reduce((sum, job) => sum + getJobSizeMiB(job), 0);
+  const maxSpeed = jobs.reduce((sum, job) => sum + getJobSpeedKiB(job), 0);
+  const etaJob = jobs
+    .map((job) => getJobEta(job))
+    .find((eta) => eta && eta !== "--");
+  const mp3Count = jobs.filter((job) => resolveMode(job) === "audio").length;
+  const mp4Count = jobs.filter((job) => resolveMode(job) === "video").length;
+  const mp3Pct = total ? Math.round((mp3Count / total) * 100) : 0;
+  const mp4Pct = total ? Math.round((mp4Count / total) * 100) : 0;
+
+  elements.statTotal.innerHTML = String(total);
+  elements.statSize.innerHTML = formatStatValue(totalSize.toFixed(2), "statUnitMiB");
+  elements.statSpeed.innerHTML = formatStatValue(maxSpeed.toFixed(2), "statUnitKiBs");
+  elements.statEta.innerHTML = `${etaJob || "--"}<sup>${t("statUnitEta")}</sup>`;
+
+  elements.statTotalBar.style.width = `${Math.min(total * 12, 100)}%`;
+  elements.statSizeBar.style.width = `${Math.min(totalSize, 100)}%`;
+  elements.statSpeedBar.style.width = `${Math.min(maxSpeed / 10, 100)}%`;
+  elements.statEtaBar.style.width = etaJob && etaJob !== "--" ? "38%" : "0%";
+
+  elements.formatMp3Bar.style.width = `${mp3Pct}%`;
+  elements.formatMp3Pct.textContent = `${mp3Pct}%`;
+  elements.formatMp4Bar.style.width = `${mp4Pct}%`;
+  elements.formatMp4Pct.textContent = `${mp4Pct}%`;
+}
+
+function createStatsFragments(job) {
+  const parts = [
+    `${getJobPercent(job).toFixed(0)}%`,
+    `${getJobSizeMiB(job).toFixed(2)} MiB`,
+    `${getJobSpeedKiB(job).toFixed(2)} KiB/s`,
+    `ETA ${getJobEta(job)}`
+  ];
+
+  return parts.map((part, index) => {
+    const span = document.createElement("span");
+    span.textContent = part;
+
+    if (index === parts.length - 1) {
+      return span;
+    }
+
+    const fragment = document.createDocumentFragment();
+    fragment.append(span);
+    const sep = document.createElement("span");
+    sep.className = "sep";
+    sep.textContent = "•";
+    fragment.append(sep);
+    return fragment;
+  });
+}
+
+function getDownloadLink(job) {
+  if (job.filename) {
+    return `/downloads/${encodeURIComponent(job.filename)}`;
+  }
+  if (job.downloadUrl) {
+    return job.downloadUrl;
+  }
+  return "";
+}
+
+function renderDownloads() {
+  const jobs = [...state.jobs.values()].sort((a, b) => {
+    return (toCreatedAtMs(b.created_at || b.createdAt) || 0) - (toCreatedAtMs(a.created_at || a.createdAt) || 0);
+  });
+
+  elements.downloadsList.innerHTML = "";
+
+  if (jobs.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "muted";
+    empty.textContent = t("emptyDownloads");
+    elements.downloadsList.append(empty);
+    renderStats();
+    return;
+  }
+
+  for (const job of jobs) {
+    const fragment = elements.template.content.cloneNode(true);
+    const article = fragment.querySelector(".dl-item");
+    const tag = fragment.querySelector(".dl-tag");
+    const title = fragment.querySelector(".dl-title");
+    const badge = fragment.querySelector(".badge");
+    const progressBar = fragment.querySelector(".prog-fill");
+    const stats = fragment.querySelector(".dl-stats");
+    const expirySlot = fragment.querySelector(".expiry-slot");
+    const link = fragment.querySelector(".dl-link");
+    const stopButton = fragment.querySelector(".stop-btn");
+    const removeButton = fragment.querySelector(".remove-btn");
+    const error = fragment.querySelector(".download-error");
+    const mode = resolveMode(job);
+    const status = normalizeStatus(job);
+    const percent = getJobPercent(job);
+
+    article.dataset.jobId = job.id;
+    article.dataset.status = status;
+    tag.textContent = `${mode === "audio" ? "MP3 AUDIO" : "MP4 VIDEO"} • ${job.uploader || job.artist || t("unknownCreator")}`;
+    title.textContent = job.title || t("unknownTitle");
+    badge.textContent = statusText(job);
+    badge.className = "badge";
+    progressBar.className = "prog-fill";
+    stats.innerHTML = "";
+    expirySlot.innerHTML = getExpiryLabel(job.created_at || job.createdAt);
+
+    if (status === "finished") {
+      badge.classList.add("badge-done");
+      progressBar.classList.add("done");
+    } else if (status === "failed") {
+      badge.classList.add("badge-error");
+      progressBar.classList.add("error");
+    } else if (status === "cancelled") {
+      badge.classList.add("badge-neutral");
+    } else {
+      badge.classList.add("badge-running");
+      progressBar.classList.add("running");
+    }
+
+    progressBar.style.width = `${Math.max(0, Math.min(percent, 100))}%`;
+
+    createStatsFragments(job).forEach((node) => {
+      stats.append(node);
+    });
+
+    const downloadUrl = getDownloadLink(job);
+    const actionRow = fragment.querySelector(".download-actions");
+    if (status === "finished" && downloadUrl) {
+      link.hidden = false;
+      link.href = downloadUrl;
+      link.download = job.filename || "";
+      link.textContent = t("downloadFile");
+    }
+
+    if (status === "finished" && Array.isArray(job.files) && job.files.length > 1) {
+      link.hidden = true;
+      job.files.forEach((file) => {
+        const anchor = document.createElement("a");
+        anchor.className = "dl-link";
+        anchor.href = `/download-file?job=${encodeURIComponent(job.id)}&file=${encodeURIComponent(file.relativePath || file.name)}`;
+        anchor.download = file.name || "";
+        anchor.textContent = `${t("downloadFile")} · ${file.name}`;
+        actionRow.insertBefore(anchor, stopButton);
+      });
+    }
+
+    stopButton.hidden = !["queued", "downloading"].includes(status);
+    removeButton.hidden = false;
+    stopButton.textContent = t("stopAction");
+    removeButton.textContent = t("removeAction");
+
+    if (job.error) {
+      error.hidden = false;
+      error.textContent = job.error;
+    }
+
+    elements.downloadsList.append(fragment);
+  }
+
+  renderStats();
+}
+
+function upsertJob(job) {
+  state.jobs.set(job.id, job);
+  renderDownloads();
+  if (["queued", "downloading", "running"].includes(job.status)) {
+    subscribeToJob(job.id);
+  } else if (state.eventSources.has(job.id)) {
+    state.eventSources.get(job.id)?.close();
+    state.eventSources.delete(job.id);
+  }
+}
+
+function subscribeToJob(jobId) {
+  if (state.eventSources.has(jobId)) {
+    return;
+  }
+
+  const source = new EventSource(`/api/downloads/${jobId}/events`);
+  source.addEventListener("job", (event) => {
+    const payload = JSON.parse(event.data);
+    state.jobs.set(payload.id, payload);
+    renderDownloads();
+    if (["finished", "failed", "cancelled", "done", "error"].includes(payload.status)) {
+      source.close();
+      state.eventSources.delete(jobId);
+    }
+  });
+
+  source.addEventListener("removed", (event) => {
+    const payload = JSON.parse(event.data);
+    state.jobs.delete(payload.id);
+    renderDownloads();
+    source.close();
+    state.eventSources.delete(jobId);
+  });
+
+  source.onerror = () => {
+    source.close();
+    state.eventSources.delete(jobId);
+    setTimeout(() => {
+      const current = state.jobs.get(jobId);
+      if (current && ["queued", "downloading", "running"].includes(current.status)) {
+        subscribeToJob(jobId);
+      }
+    }, 1500);
+  };
+
+  state.eventSources.set(jobId, source);
+}
+
+async function loadDownloads() {
+  const jobs = await requestJson("/api/downloads");
+  const nextIds = new Set(jobs.map((job) => job.id));
+
+  for (const [jobId, source] of state.eventSources.entries()) {
+    if (!nextIds.has(jobId)) {
+      source.close();
+      state.eventSources.delete(jobId);
+    }
+  }
+
+  state.jobs = new Map();
+  jobs.forEach(upsertJob);
+  renderDownloads();
+}
+
+async function cancelDownload(jobId) {
+  try {
+    const job = await requestJson(`/api/downloads/${jobId}/cancel`, {
+      method: "POST"
+    });
+    upsertJob(job);
+    showMessage(t("stopMessage"));
+  } catch (error) {
+    showMessage(error.message, true);
+  }
+}
+
+async function removeDownload(jobId) {
+  try {
+    await requestJson(`/api/downloads/${jobId}`, {
+      method: "DELETE"
+    });
+    state.jobs.delete(jobId);
+    state.eventSources.get(jobId)?.close();
+    state.eventSources.delete(jobId);
+    renderDownloads();
+    showMessage(t("removeMessage"));
+  } catch (error) {
+    showMessage(error.message, true);
+  }
+}
+
+async function loadCookieStatus() {
+  try {
+    const status = await requestJson("/api/cookies");
+    renderCookieStatus(status);
+  } catch (error) {
+    renderCookieStatus(null, error.message);
+  }
+}
+
+async function inspectUrl() {
+  clearMessage();
+  renderMetadata(null);
+
+  try {
+    showMessage(t("metadataLoading"));
+    const metadata = await requestJson("/api/probe", {
+      method: "POST",
+      body: JSON.stringify({
+        url: elements.urlInput.value.trim(),
+        scope: elements.scopeSelect.value
+      })
+    });
+    renderMetadata(metadata);
+    showMessage(t("metadataLoaded"));
+  } catch (error) {
+    showMessage(error.message, true);
+  }
+}
+
+async function startDownload() {
+  clearMessage();
+
+  if (!state.metadata) {
+    await inspectUrl();
+    if (!state.metadata) {
+      return;
+    }
+  }
+
+  try {
+    const job = await requestJson("/api/downloads", {
+      method: "POST",
+      body: JSON.stringify({
+        url: elements.urlInput.value.trim(),
+        scope: elements.scopeSelect.value,
+        mode: getSelectedMode(),
+        audioQuality: elements.audioQuality.value
+      })
+    });
+    upsertJob(job);
+    showMessage(t("downloadQueued"));
+  } catch (error) {
+    showMessage(error.message, true);
+  }
+}
+
+elements.probeForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  await inspectUrl();
 });
+
+elements.downloadButton.addEventListener("click", async () => {
+  await startDownload();
+});
+
+elements.clearButton.addEventListener("click", () => {
+  elements.urlInput.value = "";
+  elements.scopeSelect.value = "auto";
+  renderMetadata(null);
+  state.metadata = null;
+  clearMessage();
+});
+
+elements.refreshButton.addEventListener("click", async () => {
+  clearMessage();
+  try {
+    await loadDownloads();
+    showMessage(t("downloadsRefreshed"));
+  } catch (error) {
+    showMessage(error.message, true);
+  }
+});
+
+elements.downloadsList.addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-action]");
+  if (!button) {
+    return;
+  }
+
+  const article = button.closest("[data-job-id]");
+  const jobId = article?.dataset.jobId;
+  if (!jobId) {
+    return;
+  }
+
+  if (button.dataset.action === "cancel") {
+    await cancelDownload(jobId);
+    return;
+  }
+
+  if (button.dataset.action === "remove") {
+    await removeDownload(jobId);
+  }
+});
+
+elements.openModalButton.addEventListener("click", openCookieModal);
+elements.dismissModalButton.addEventListener("click", closeCookieModal);
+elements.cookieFileTrigger.addEventListener("click", () => {
+  elements.cookieFile.click();
+});
+
+elements.localeButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    setLocale(button.dataset.locale);
+  });
+});
+
+elements.themeButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    applyTheme(button.dataset.theme);
+  });
+});
+
+document.querySelectorAll('.toggle-btn input[name="mode"]').forEach((input) => {
+  input.addEventListener("change", () => {
+    document.querySelectorAll(".toggle-btn").forEach((label) => {
+      label.classList.toggle("active", label.querySelector("input")?.checked);
+    });
+    updateAudioQualityVisibility();
+  });
+});
+
+elements.cookieFile.addEventListener("change", () => {
+  const file = elements.cookieFile.files?.[0];
+  elements.cookieFileName.textContent = file ? file.name : t("cookieFileEmpty");
+});
+
+elements.uploadCookiesButton.addEventListener("click", async () => {
+  const file = elements.cookieFile.files?.[0];
+  if (!file) {
+    showMessage(t("cookieSelectFirst"), true);
+    return;
+  }
+
+  try {
+    const content = await file.text();
+    await requestJson("/api/cookies", {
+      method: "PUT",
+      body: JSON.stringify({ content })
+    });
+    await loadCookieStatus();
+    showMessage(t("cookieSaved"));
+    elements.cookieFile.value = "";
+    elements.cookieFileName.textContent = t("cookieFileEmpty");
+  } catch (error) {
+    showMessage(error.message, true);
+  }
+});
+
+elements.deleteCookiesButton.addEventListener("click", async () => {
+  try {
+    await requestJson("/api/cookies", { method: "DELETE" });
+    await loadCookieStatus();
+    showMessage(t("cookieRemoved"));
+  } catch (error) {
+    showMessage(error.message, true);
+  }
+});
+
+applyTheme(state.theme);
+applyStaticTranslations();
+updateAudioQualityVisibility();
+renderDownloads();
+
+loadDownloads().catch((error) => {
+  showMessage(error.message, true);
+});
+
+loadCookieStatus().catch((error) => {
+  renderCookieStatus(null, error.message);
+});
+
+state.downloadsPolling = window.setInterval(() => {
+  loadDownloads().catch(() => {});
+}, POLL_INTERVAL_MS);
+
+window.setInterval(() => {
+  renderDownloads();
+}, EXPIRY_INTERVAL_MS);
