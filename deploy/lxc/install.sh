@@ -6,7 +6,7 @@
 # Run on the Proxmox host:
 #   bash <(curl -fsSL https://raw.githubusercontent.com/juliuskolosnjaji/youtube-downloader/main/deploy/lxc/install.sh)
 
-set -Eeuo pipefail
+set -uo pipefail
 
 # ==============================================================================
 # Colors & Formatting
@@ -103,6 +103,74 @@ start_spinner() { (while true; do for c in '⠋' '⠙' '⠹' '⠸' '⠼' '⠴' '
 stop_spinner()  { [[ -n "$spinner_pid" ]] && { kill "$spinner_pid" 2>/dev/null; wait "$spinner_pid" 2>/dev/null || true; spinner_pid=""; }; }
 
 # ==============================================================================
+# next_id — find the next available CT ID
+# (defined here so it's available before the CT scan)
+# ==============================================================================
+next_id() {
+  local id=100
+  while pct status "$id" &>/dev/null 2>&1; do id=$((id + 1)); done
+  echo "$id"
+}
+
+# ==============================================================================
+# _manage_cloudflare — install / replace / remove Cloudflare Tunnel
+# (defined here so it's available to both the "existing CT" and "new CT" flows)
+# ==============================================================================
+_manage_cloudflare() {
+  local ct="$1"
+
+  CF_RUNNING=$(pct exec "$ct" -- bash -c "
+    command -v cloudflared &>/dev/null && \
+    systemctl is-active --quiet cloudflared && echo yes || echo no
+  " 2>/dev/null || echo "no")
+
+  if [[ "$CF_RUNNING" == "yes" ]]; then
+    CF_ACTION=$(whiptail --backtitle "YouTube Downloader" \
+      --title "Cloudflare Tunnel" \
+      --menu "\nTunnel is currently running." 14 60 3 \
+      "1" "Keep existing tunnel" \
+      "2" "Replace tunnel token" \
+      "3" "Remove tunnel" \
+      3>&1 1>&2 2>&3) || return 0
+  else
+    CF_ACTION=$(whiptail --backtitle "YouTube Downloader" \
+      --title "Cloudflare Tunnel (optional)" \
+      --menu "\nExpose the app via Cloudflare without opening ports." 15 60 2 \
+      "1" "Skip — LAN access only" \
+      "2" "Set up Cloudflare Tunnel" \
+      3>&1 1>&2 2>&3) || return 0
+    [[ "$CF_ACTION" == "1" ]] && { msg_ok "Skipping Cloudflare Tunnel"; return 0; }
+    CF_ACTION="2"
+  fi
+
+  case "$CF_ACTION" in
+    2)
+      CF_TOKEN=$(whiptail --backtitle "YouTube Downloader" \
+        --title "Cloudflare Tunnel Token" \
+        --inputbox "\nPaste your tunnel token.\n\nGet it at:\n  dash.cloudflare.com → Zero Trust\n  → Networks → Tunnels → Create tunnel\n  → Cloudflared → copy the token\n" \
+        18 70 3>&1 1>&2 2>&3) || return 0
+
+      if [[ -z "$CF_TOKEN" ]]; then
+        msg_error "No token entered — skipping Cloudflare setup"
+        return 0
+      fi
+
+      msg_info "Installing Cloudflare Tunnel"
+      pct exec "$ct" -- bash -c "curl -fsSL $GITHUB_RAW/cloudflare.sh -o /tmp/cloudflare.sh && bash /tmp/cloudflare.sh install '$CF_TOKEN'"
+      msg_ok "Cloudflare Tunnel installed"
+      ;;
+    3)
+      msg_info "Removing Cloudflare Tunnel"
+      pct exec "$ct" -- bash -c "curl -fsSL $GITHUB_RAW/cloudflare.sh -o /tmp/cloudflare.sh && bash /tmp/cloudflare.sh remove"
+      msg_ok "Cloudflare Tunnel removed"
+      ;;
+    *)
+      msg_ok "Keeping existing tunnel"
+      ;;
+  esac
+}
+
+# ==============================================================================
 # Defaults
 # ==============================================================================
 
@@ -125,16 +193,21 @@ var_unprivileged="1"
 
 header_info
 check_proxmox
-catch_errors
 
 # ── Detect existing installation ──────────────────────────────────────────────
+# NOTE: strict error handling is NOT active here intentionally — the CT scan
+# uses subshells that may return non-zero when no match is found.
 EXISTING_CT=""
-for id in $(pct list 2>/dev/null | awk 'NR>1 {print $1}'); do
+while IFS= read -r id; do
+  [[ -z "$id" ]] && continue
   if pct exec "$id" -- test -d "$APP_DIR/.git" 2>/dev/null; then
     EXISTING_CT="$id"
     break
   fi
-done
+done < <(pct list 2>/dev/null | awk 'NR>1 {print $1}')
+
+# Enable strict error handling from here on
+catch_errors
 
 # ── Mode selection ────────────────────────────────────────────────────────────
 if [[ -n "$EXISTING_CT" ]]; then
@@ -212,7 +285,7 @@ if [[ "$ACTION" == "1" ]]; then
 fi
 
 # ==============================================================================
-# CLOUDFLARE management
+# CLOUDFLARE management (existing CT)
 # ==============================================================================
 if [[ "$ACTION" == "2" ]]; then
   header_info
@@ -225,63 +298,6 @@ if [[ "$ACTION" == "2" ]]; then
   _manage_cloudflare "$CT_ID"
   exit 0
 fi
-
-# ==============================================================================
-# CLOUDFLARE helper function (used in both new + existing flows)
-# ==============================================================================
-_manage_cloudflare() {
-  local ct="$1"
-
-  CF_RUNNING=$(pct exec "$ct" -- bash -c "
-    command -v cloudflared &>/dev/null && \
-    systemctl is-active --quiet cloudflared && echo yes || echo no
-  " 2>/dev/null || echo "no")
-
-  if [[ "$CF_RUNNING" == "yes" ]]; then
-    CF_ACTION=$(whiptail --backtitle "YouTube Downloader" \
-      --title "Cloudflare Tunnel" \
-      --menu "\nTunnel is currently running." 14 60 3 \
-      "1" "Keep existing tunnel" \
-      "2" "Replace tunnel token" \
-      "3" "Remove tunnel" \
-      3>&1 1>&2 2>&3) || return 0
-  else
-    CF_ACTION=$(whiptail --backtitle "YouTube Downloader" \
-      --title "Cloudflare Tunnel (optional)" \
-      --menu "\nExpose the app via Cloudflare without opening ports." 15 60 2 \
-      "1" "Skip — LAN access only" \
-      "2" "Set up Cloudflare Tunnel" \
-      3>&1 1>&2 2>&3) || return 0
-    [[ "$CF_ACTION" == "1" ]] && { msg_ok "Skipping Cloudflare Tunnel"; return 0; }
-    CF_ACTION="2"
-  fi
-
-  case "$CF_ACTION" in
-    2)
-      CF_TOKEN=$(whiptail --backtitle "YouTube Downloader" \
-        --title "Cloudflare Tunnel Token" \
-        --inputbox "\nPaste your tunnel token.\n\nGet it at:\n  dash.cloudflare.com → Zero Trust\n  → Networks → Tunnels → Create tunnel\n  → Cloudflared → copy the token\n" \
-        18 70 3>&1 1>&2 2>&3) || return 0
-
-      if [[ -z "$CF_TOKEN" ]]; then
-        msg_error "No token entered — skipping Cloudflare setup"
-        return 0
-      fi
-
-      msg_info "Installing Cloudflare Tunnel"
-      lxc-attach -n "$ct" -- bash -c "curl -fsSL $GITHUB_RAW/cloudflare.sh -o /tmp/cloudflare.sh && bash /tmp/cloudflare.sh install" "$CF_TOKEN"
-      msg_ok "Cloudflare Tunnel installed"
-      ;;
-    3)
-      msg_info "Removing Cloudflare Tunnel"
-      lxc-attach -n "$ct" -- bash -c "curl -fsSL $GITHUB_RAW/cloudflare.sh -o /tmp/cloudflare.sh && bash /tmp/cloudflare.sh remove"
-      msg_ok "Cloudflare Tunnel removed"
-      ;;
-    *)
-      msg_ok "Keeping existing tunnel"
-      ;;
-  esac
-}
 
 # ==============================================================================
 # NEW container setup
@@ -299,11 +315,6 @@ else
 fi
 
 # ── Container ID ──────────────────────────────────────────────────────────────
-next_id() {
-  local id=100
-  while pct status "$id" &>/dev/null 2>&1; do id=$((id + 1)); done
-  echo "$id"
-}
 DEFAULT_CTID=$(next_id)
 
 if [[ "$SETTINGS" == "advanced" ]]; then
@@ -438,7 +449,7 @@ msg_ok "curl installed"
 # ── Wait for network ──────────────────────────────────────────────────────────
 msg_info "Waiting for network"
 for i in {1..30}; do
-  if lxc-attach -n "$CT_ID" -- curl -fsSL --max-time 3 https://github.com &>/dev/null; then
+  if pct exec "$CT_ID" -- curl -fsSL --max-time 3 https://github.com &>/dev/null; then
     break
   fi
   sleep 2
@@ -447,7 +458,7 @@ msg_ok "Network ready"
 
 # ── Run setup ─────────────────────────────────────────────────────────────────
 msg_info "Installing dependencies (Node.js, ffmpeg, yt-dlp)"
-lxc-attach -n "$CT_ID" -- bash -c "
+pct exec "$CT_ID" -- bash -c "
   apt-get update -qq
   apt-get install -y --no-install-recommends curl ca-certificates gnupg git ffmpeg python3 > /dev/null
   curl -fsSL https://deb.nodesource.com/setup_22.x | bash - > /dev/null
@@ -472,7 +483,7 @@ pct exec "$CT_ID" -- bash -c "
 msg_ok "Repository deployed"
 
 msg_info "Installing systemd service"
-lxc-attach -n "$CT_ID" -- bash -c "
+pct exec "$CT_ID" -- bash -c "
   cp $APP_DIR/deploy/lxc/$SERVICE_NAME.service /etc/systemd/system/$SERVICE_NAME.service
   cp $APP_DIR/deploy/lxc/update.sh /usr/local/bin/ytdl-update
   chmod +x /usr/local/bin/ytdl-update
@@ -486,14 +497,14 @@ if (whiptail --backtitle "YouTube Downloader" \
   --title "Configuration" \
   --yesno "\nEdit .env config now?\n\nYou can change PORT, R2 storage settings, yt-dlp options etc.\nThe app won't start until PORT is reachable." \
   12 55); then
-  lxc-attach -n "$CT_ID" -- nano "$APP_DIR/.env"
+  pct exec "$CT_ID" -- nano "$APP_DIR/.env"
 fi
 
 # ── Start service ─────────────────────────────────────────────────────────────
 msg_info "Starting service"
-lxc-attach -n "$CT_ID" -- systemctl start "$SERVICE_NAME" > /dev/null 2>&1
+pct exec "$CT_ID" -- systemctl start "$SERVICE_NAME" > /dev/null 2>&1
 sleep 2
-if lxc-attach -n "$CT_ID" -- systemctl is-active --quiet "$SERVICE_NAME"; then
+if pct exec "$CT_ID" -- systemctl is-active --quiet "$SERVICE_NAME"; then
   msg_ok "Service started"
 else
   msg_error "Service failed to start — check: pct exec ${CT_ID} -- journalctl -u ${SERVICE_NAME} -n 30"
