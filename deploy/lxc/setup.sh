@@ -26,6 +26,7 @@ error()   { echo -e "${RED}[error]${NC} $*"; exit 1; }
 
 # ── 1. System packages ────────────────────────────────────────────────────────
 info "Updating system packages..."
+git config --global --add safe.directory '*'
 apt-get update -qq
 apt-get install -y --no-install-recommends \
     curl ca-certificates gnupg git ffmpeg python3 sudo \
