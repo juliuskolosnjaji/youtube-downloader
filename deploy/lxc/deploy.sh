@@ -186,7 +186,7 @@ else
 
     # Wait for network
     for i in {1..20}; do
-        if pct exec "$CT_ID" -- curl -fsSL --max-time 3 https://github.com &>/dev/null; then
+        if lxc-attach -n "$CT_ID" -- curl -fsSL --max-time 3 https://github.com &>/dev/null; then
             break
         fi
         sleep 2
@@ -194,8 +194,8 @@ else
 
     # Run setup inside the container
     info "Running setup inside CT $CT_ID..."
-    pct exec "$CT_ID" -- curl -fsSL "$GITHUB_RAW/setup.sh" -o /tmp/setup.sh
-    pct exec "$CT_ID" -- bash /tmp/setup.sh
+    lxc-attach -n "$CT_ID" -- curl -fsSL "$GITHUB_RAW/setup.sh" -o /tmp/setup.sh
+    lxc-attach -n "$CT_ID" -- bash /tmp/setup.sh
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -217,8 +217,8 @@ if [[ "$ENV_EXISTS" == "default" ]]; then
     read -rp "  " EDIT_ENV
     EDIT_ENV="${EDIT_ENV:-Y}"
     if [[ "${EDIT_ENV^^}" == "Y" ]]; then
-        pct exec "$CT_ID" -- nano "$APP_DIR/.env"
-        pct exec "$CT_ID" -- systemctl restart "$SERVICE_NAME" || true
+        lxc-attach -n "$CT_ID" -- nano "$APP_DIR/.env"
+        lxc-attach -n "$CT_ID" -- systemctl restart "$SERVICE_NAME" || true
     fi
 else
     info ".env already configured, skipping."
@@ -269,10 +269,10 @@ case "$CF_CHOICE" in
         echo ""
         read -rp "  Paste your tunnel token: " CF_TOKEN
         [[ -z "$CF_TOKEN" ]] && warning "No token entered, skipping Cloudflare setup." || \
-            pct exec "$CT_ID" -- bash -c "curl -fsSL $GITHUB_RAW/cloudflare.sh -o /tmp/cloudflare.sh && bash /tmp/cloudflare.sh install" "$CF_TOKEN"
+            lxc-attach -n "$CT_ID" -- bash -c "curl -fsSL $GITHUB_RAW/cloudflare.sh -o /tmp/cloudflare.sh && bash /tmp/cloudflare.sh install" "$CF_TOKEN"
         ;;
     3)
-        pct exec "$CT_ID" -- bash -c "curl -fsSL $GITHUB_RAW/cloudflare.sh -o /tmp/cloudflare.sh && bash /tmp/cloudflare.sh remove"
+        lxc-attach -n "$CT_ID" -- bash -c "curl -fsSL $GITHUB_RAW/cloudflare.sh -o /tmp/cloudflare.sh && bash /tmp/cloudflare.sh remove"
         ;;
     *)
         info "Skipping Cloudflare Tunnel."

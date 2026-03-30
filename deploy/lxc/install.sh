@@ -264,12 +264,12 @@ _manage_cloudflare() {
       fi
 
       msg_info "Installing Cloudflare Tunnel"
-      pct exec "$ct" -- bash -c "curl -fsSL $GITHUB_RAW/cloudflare.sh -o /tmp/cloudflare.sh && bash /tmp/cloudflare.sh install" "$CF_TOKEN"
+      lxc-attach -n "$ct" -- bash -c "curl -fsSL $GITHUB_RAW/cloudflare.sh -o /tmp/cloudflare.sh && bash /tmp/cloudflare.sh install" "$CF_TOKEN"
       msg_ok "Cloudflare Tunnel installed"
       ;;
     3)
       msg_info "Removing Cloudflare Tunnel"
-      pct exec "$ct" -- bash -c "curl -fsSL $GITHUB_RAW/cloudflare.sh -o /tmp/cloudflare.sh && bash /tmp/cloudflare.sh remove"
+      lxc-attach -n "$ct" -- bash -c "curl -fsSL $GITHUB_RAW/cloudflare.sh -o /tmp/cloudflare.sh && bash /tmp/cloudflare.sh remove"
       msg_ok "Cloudflare Tunnel removed"
       ;;
     *)
@@ -427,7 +427,7 @@ msg_ok "Container CT${CT_ID} created"
 # ── Wait for network ──────────────────────────────────────────────────────────
 msg_info "Waiting for network"
 for i in {1..30}; do
-  if pct exec "$CT_ID" -- curl -fsSL --max-time 3 https://github.com &>/dev/null; then
+  if lxc-attach -n "$CT_ID" -- curl -fsSL --max-time 3 https://github.com &>/dev/null; then
     break
   fi
   sleep 2
@@ -436,7 +436,7 @@ msg_ok "Network ready"
 
 # ── Run setup ─────────────────────────────────────────────────────────────────
 msg_info "Installing dependencies (Node.js, ffmpeg, yt-dlp)"
-pct exec "$CT_ID" -- bash -c "
+lxc-attach -n "$CT_ID" -- bash -c "
   apt-get update -qq
   apt-get install -y --no-install-recommends curl ca-certificates gnupg git ffmpeg python3 > /dev/null
   curl -fsSL https://deb.nodesource.com/setup_22.x | bash - > /dev/null
@@ -461,7 +461,7 @@ pct exec "$CT_ID" -- bash -c "
 msg_ok "Repository deployed"
 
 msg_info "Installing systemd service"
-pct exec "$CT_ID" -- bash -c "
+lxc-attach -n "$CT_ID" -- bash -c "
   cp $APP_DIR/deploy/lxc/$SERVICE_NAME.service /etc/systemd/system/$SERVICE_NAME.service
   cp $APP_DIR/deploy/lxc/update.sh /usr/local/bin/ytdl-update
   chmod +x /usr/local/bin/ytdl-update
@@ -475,14 +475,14 @@ if (whiptail --backtitle "YouTube Downloader" \
   --title "Configuration" \
   --yesno "\nEdit .env config now?\n\nYou can change PORT, R2 storage settings, yt-dlp options etc.\nThe app won't start until PORT is reachable." \
   12 55); then
-  pct exec "$CT_ID" -- nano "$APP_DIR/.env"
+  lxc-attach -n "$CT_ID" -- nano "$APP_DIR/.env"
 fi
 
 # ── Start service ─────────────────────────────────────────────────────────────
 msg_info "Starting service"
-pct exec "$CT_ID" -- systemctl start "$SERVICE_NAME" > /dev/null 2>&1
+lxc-attach -n "$CT_ID" -- systemctl start "$SERVICE_NAME" > /dev/null 2>&1
 sleep 2
-if pct exec "$CT_ID" -- systemctl is-active --quiet "$SERVICE_NAME"; then
+if lxc-attach -n "$CT_ID" -- systemctl is-active --quiet "$SERVICE_NAME"; then
   msg_ok "Service started"
 else
   msg_error "Service failed to start — check: pct exec ${CT_ID} -- journalctl -u ${SERVICE_NAME} -n 30"
