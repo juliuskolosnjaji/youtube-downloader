@@ -232,7 +232,9 @@ async function processQueue() {
             });
           }
 
-          await fsp.rm(outputDir, { recursive: true, force: true }).catch(() => {});
+          if (isR2Configured) {
+            await fsp.rm(outputDir, { recursive: true, force: true }).catch(() => {});
+          }
         } else if (isR2Configured && filename) {
           const filePath = path.join(downloadsDir, filename);
           const uploaded = await uploadDownload(job, filePath);

@@ -671,11 +671,11 @@ function createStatsFragments(job) {
 }
 
 function getDownloadLink(job) {
-  if (job.filename) {
-    return `/downloads/${encodeURIComponent(job.filename)}`;
-  }
   if (job.downloadUrl) {
     return job.downloadUrl;
+  }
+  if (job.filename) {
+    return `/downloads/${encodeURIComponent(job.filename)}`;
   }
   return "";
 }
@@ -756,7 +756,7 @@ function renderDownloads() {
       job.files.forEach((file) => {
         const anchor = document.createElement("a");
         anchor.className = "dl-link";
-        anchor.href = `/download-file?job=${encodeURIComponent(job.id)}&file=${encodeURIComponent(file.relativePath || file.name)}`;
+        anchor.href = file.downloadUrl || `/download-file?job=${encodeURIComponent(job.id)}&file=${encodeURIComponent(file.relativePath || file.name)}`;
         anchor.download = file.name || "";
         anchor.textContent = `${t("downloadFile")} · ${file.name}`;
         actionRow.insertBefore(anchor, stopButton);
