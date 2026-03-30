@@ -28,7 +28,7 @@ error()   { echo -e "${RED}[error]${NC} $*"; exit 1; }
 info "Updating system packages..."
 apt-get update -qq
 apt-get install -y --no-install-recommends \
-    curl ca-certificates gnupg git ffmpeg python3 \
+    curl ca-certificates gnupg git ffmpeg python3 sudo \
     > /dev/null
 
 # ── 2. Node.js via NodeSource ─────────────────────────────────────────────────
