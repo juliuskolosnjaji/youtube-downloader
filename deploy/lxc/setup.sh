@@ -53,7 +53,7 @@ if ! id "$APP_USER" &>/dev/null; then
 fi
 
 # ── 5. Clone or update from GitHub ───────────────────────────────────────────
-git config --global --add safe.directory "$APP_DIR"
+git config --global --add safe.directory '*'
 if [[ -d "$APP_DIR/.git" ]]; then
     info "Repository already exists, pulling latest..."
     git -C "$APP_DIR" fetch --quiet origin "$GITHUB_BRANCH"
