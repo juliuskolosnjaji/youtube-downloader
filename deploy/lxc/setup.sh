@@ -49,7 +49,7 @@ chmod +x /usr/local/bin/yt-dlp
 # ── 4. App user ───────────────────────────────────────────────────────────────
 if ! id "$APP_USER" &>/dev/null; then
     info "Creating user $APP_USER..."
-    useradd --system --shell /usr/sbin/nologin --home-dir "$APP_DIR" "$APP_USER"
+    useradd --system --shell /bin/bash --home-dir "$APP_DIR" "$APP_USER"
 fi
 
 # ── 5. Clone or update from GitHub ───────────────────────────────────────────
