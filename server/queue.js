@@ -219,10 +219,15 @@ async function processQueue() {
             let objectKey = null;
 
             if (isR2Configured) {
-              const uploaded = await uploadFile(job.id, file.name, file.filePath);
-              if (uploaded) {
-                objectKey = uploaded.objectKey;
-                downloadUrl = await getDownloadUrl(uploaded.objectKey, uploaded.filename);
+              try {
+                const uploaded = await uploadFile(job.id, file.name, file.filePath);
+                if (uploaded) {
+                  objectKey = uploaded.objectKey;
+                  downloadUrl = await getDownloadUrl(uploaded.objectKey, uploaded.filename);
+                }
+              } catch {
+                // Upload failed, continue to next file
+              } finally {
                 await fsp.rm(file.filePath, { force: true }).catch(() => {});
               }
             }
@@ -240,10 +245,15 @@ async function processQueue() {
           }
         } else if (isR2Configured && filename) {
           const filePath = path.join(downloadsDir, filename);
-          const uploaded = await uploadDownload(job, filePath);
-          if (uploaded) {
-            job.filename = uploaded.filename;
-            job.objectKey = uploaded.objectKey;
+          try {
+            const uploaded = await uploadDownload(job, filePath);
+            if (uploaded) {
+              job.filename = uploaded.filename;
+              job.objectKey = uploaded.objectKey;
+            }
+          } catch {
+            // Upload failed, job will have no R2 files
+          } finally {
             await fsp.rm(filePath, { force: true }).catch(() => {});
           }
           job.files = job.filename

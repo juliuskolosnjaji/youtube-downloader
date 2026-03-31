@@ -1,4 +1,4 @@
-const fs = require('node:fs/promises');
+const fs = require('node:fs');
 const path = require('node:path');
 const { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
@@ -41,7 +41,6 @@ async function uploadFile(jobId, filename, filePath) {
     return null;
   }
 
-  const body = await fs.readFile(filePath);
   const safeName = safeDownloadName(filename);
   const objectKey = getObjectKey(jobId, safeName);
 
@@ -49,7 +48,7 @@ async function uploadFile(jobId, filename, filePath) {
     new PutObjectCommand({
       Bucket: r2Bucket,
       Key: objectKey,
-      Body: body,
+      Body: fs.createReadStream(filePath),
       ContentType: safeName.toLowerCase().endsWith('.mp3') ? 'audio/mpeg' : 'video/mp4',
       ContentDisposition: `attachment; filename="${safeName}"`
     })
